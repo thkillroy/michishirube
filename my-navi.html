@@ -53,6 +53,10 @@ body { background:#08090d; color:#e9e9ee; font-family:'Helvetica Neue',Arial,san
 #map-wrap { position:relative; flex:1; min-height:0; }
 #map { width:100%; height:100%; }
 
+#panel-toggle { position:absolute; right:0; top:50%; transform:translateY(-50%); z-index:1400;
+  background:rgba(14,16,20,0.92); border:1px solid #ff9f1c; border-right:none; border-radius:10px 0 0 10px;
+  color:#ff9f1c; padding:14px 5px; font-size:13px; line-height:1; cursor:pointer; }
+body.panel-hidden #bottom { display:none; }
 #play-bar { display:none; position:absolute; left:60px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom,0px)); z-index:1500; background:rgba(15,15,15,0.96); border:1px solid #ff9f1c; border-radius:12px; padding:10px 12px; box-shadow:0 4px 16px rgba(0,0,0,0.6); max-width:560px; margin-left:auto; }
 #play-bar.show { display:block; }
 .play-ctl { background:#181b23; border:1px solid #343b48; color:#ff9f1c; border-radius:8px; font-size:16px; padding:5px 10px; cursor:pointer; flex-shrink:0; }
@@ -68,7 +72,7 @@ body { background:#08090d; color:#e9e9ee; font-family:'Helvetica Neue',Arial,san
 .maptype-btn.active { background:#ff9f1c; border-color:#ff9f1c; color:#000; font-weight:700; }
 
 #bottom { background:#0e1014; border-top:2px solid #ff9f1c; flex-shrink:0; display:flex; flex-direction:column; }
-#panel-handle { display:none; align-items:center; justify-content:center; gap:8px; height:38px; flex-shrink:0;
+#panel-handle { display:none; position:relative; align-items:center; justify-content:center; gap:8px; height:38px; flex-shrink:0;
   position:sticky; top:0; z-index:20;
   background:#1a1d26; border-bottom:1px solid #ff9f1c; color:#ff9f1c; font-size:12px; font-weight:700; cursor:pointer; user-select:none; }
 #panel-handle .bar { width:24px; height:3px; border-radius:2px; background:#ff9f1c; opacity:0.7; }
@@ -276,6 +280,7 @@ body { background:#08090d; color:#e9e9ee; font-family:'Helvetica Neue',Arial,san
 
 <div id="map-wrap">
   <div id="map"></div>
+  <button id="panel-toggle" onclick="togglePanelHidden()" title="欄の表示・非表示">▸</button>
   <div id="play-bar">
     <div style="display:flex;align-items:center;gap:8px;">
       <button class="play-ctl" id="play-toggle" onclick="togglePlay()">⏸</button>
@@ -352,7 +357,7 @@ body { background:#08090d; color:#e9e9ee; font-family:'Helvetica Neue',Arial,san
 </div>
 
 <div id="bottom">
-  <div id="panel-handle" onclick="togglePanelListOnly()"><span class="bar"></span><span id="panel-handle-text">欄だけ</span><span class="bar"></span></div>
+  <div id="panel-handle"><span class="bar" onclick="togglePanelListOnly()"></span><span id="panel-handle-text" onclick="togglePanelListOnly()">欄だけ</span><span class="bar" onclick="togglePanelListOnly()"></span><span onclick="togglePanelHidden()" style="position:absolute;right:8px;color:#7e7e8b;font-size:14px;">✕</span></div>
   <div id="nav-bar">
     <div id="nav-label" data-i18n="nav_label_next">次のポイントへ</div>
     <div id="nav-name">—</div>
@@ -2404,6 +2409,9 @@ async function startPlayback(){
   clearPolylines();
   playHiddenMarkers = [];
   points.forEach(p=>{ if(p.marker){ p.marker.setOpacity(0); playHiddenMarkers.push(p.marker); } });
+  // 現在地のアイコンと精度の円は隠す
+  if(gpsMarker && map.hasLayer(gpsMarker)) map.removeLayer(gpsMarker);
+  if(gpsCircle && map.hasLayer(gpsCircle)) map.removeLayer(gpsCircle);
   buildPlayLines();
   playMarker = L.marker(playSegs[0].coords[0], {icon:L.divIcon({html:playIconHTML(0), iconSize:[44,44], iconAnchor:[22,22], className:''}), zIndexOffset:2000}).addTo(playLayer);
   playPos = 0;
@@ -2545,6 +2553,9 @@ function stopPlay(silent){
   if(playLayer){ map.removeLayer(playLayer); playLayer = null; }
   playBaseLines = []; playProgLines = []; playMarker = null; playSegs = [];
   points.forEach(p=>{ if(p.marker) p.marker.setOpacity(1); });
+  // 現在地のアイコンを戻す
+  if(gpsMarker && !map.hasLayer(gpsMarker)) gpsMarker.addTo(map);
+  if(gpsCircle && !map.hasLayer(gpsCircle)) gpsCircle.addTo(map);
   document.getElementById('play-bar').classList.remove('show');
   if(!silent) updatePolyline();
 }
@@ -2931,8 +2942,19 @@ function speak(txt){
 function reverseRoute(){
   if(points.length<2){alert(t('alert_need_2points'));return;}
   if(!confirm(t('confirm_reverse')))return;
+  // 区間の設定（移動手段・色・線の形）を逆順に付け替える
+  const segs = points.slice(0, points.length-1).map(p=>({
+    segMode: p.segMode, segColor: p.segColor,
+    segPath: p.segPath ? p.segPath.slice().reverse() : null
+  }));
   points.reverse();
-  invalidateAllSegs();
+  points.forEach(p=>{ delete p.segMode; delete p.segColor; delete p.segPath; });
+  segs.reverse();
+  segs.forEach((sg,i)=>{
+    if(sg.segMode) points[i].segMode = sg.segMode;
+    if(sg.segColor) points[i].segColor = sg.segColor;
+    if(sg.segPath) points[i].segPath = sg.segPath;
+  });
   if(navActive)navIndex=0;
   rebuildAllMarkers();
   updatePolyline();
@@ -5020,6 +5042,14 @@ async function deleteFromSupabase(id){
   } catch(e){
     alert(t('alert_delete_fail')+': '+e.message);
   }
+}
+
+// 欄そのものを隠す・出す
+function togglePanelHidden(){
+  document.body.classList.toggle('panel-hidden');
+  const on = document.body.classList.contains('panel-hidden');
+  document.getElementById('panel-toggle').textContent = on ? '◂' : '▸';
+  if(window.map) setTimeout(()=>map.invalidateSize(), 150);
 }
 
 // 横向きパネルの表示切替（つまみをタップ、またはパネルを左右にスワイプ）
