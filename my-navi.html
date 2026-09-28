@@ -2519,6 +2519,7 @@ async function startPlayback(){
   document.getElementById('play-slider').value = 0;
   setPlayLineModeLabels();
   playRunning = true;
+  requestWakeLock();
   document.getElementById('play-toggle').textContent = '⏸';
   playLastT = performance.now();
   playRAF = requestAnimationFrame(playStep);
@@ -2649,6 +2650,7 @@ function seekPlay(v){
 
 function stopPlay(silent){
   playRunning = false;
+  if(!navActive) releaseWakeLock();
   if(playRAF) cancelAnimationFrame(playRAF);
   if(playLayer){ map.removeLayer(playLayer); playLayer = null; }
   playBaseLines = []; playProgLines = []; playMarker = null; playSegs = [];
@@ -2963,10 +2965,39 @@ document.getElementById('search-input').addEventListener('keydown',e=>{if(e.key=
 
 // ===== ナビ =====
 const REACH=40;
+// ===== 画面が消えないようにする（ナビ中・再生中） =====
+let wakeLock = null;
+
+async function requestWakeLock(){
+  try{
+    if(!('wakeLock' in navigator)) return false;
+    if(wakeLock) return true;
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', ()=>{ wakeLock = null; });
+    return true;
+  }catch(e){
+    console.warn('画面のスリープ防止に失敗', e);
+    wakeLock = null;
+    return false;
+  }
+}
+
+function releaseWakeLock(){
+  if(wakeLock){ wakeLock.release().catch(()=>{}); wakeLock = null; }
+}
+
+// 他のアプリから戻ってきた時は、解除されているので取り直す
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible' && (navActive || playRunning)) requestWakeLock();
+});
+
 function toggleNav(){navActive?stopNav():startNav();}
 function startNav(){
   if(!points.length){alert(t('alert_no_points'));return;}
   navActive=true;navIndex=0;
+  requestWakeLock().then(ok=>{
+    if(!ok) console.warn('この端末・ブラウザでは画面のスリープを止められません');
+  });
   const btn=document.getElementById('btn-nav');btn.textContent=t('nav_stop_btn');btn.className='btn btn-nav-stop';
   document.getElementById('nav-bar').classList.add('show');
   followMode=true;document.getElementById('follow-btn').classList.add('active');
@@ -2984,6 +3015,7 @@ function startNav(){
   }
 }
 function stopNav(){
+  releaseWakeLock();
   navActive=false;
   const btn=document.getElementById('btn-nav');btn.textContent=t('nav_start_btn');btn.className='btn btn-green';
   document.getElementById('nav-bar').classList.remove('show');
