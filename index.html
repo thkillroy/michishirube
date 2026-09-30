@@ -61,16 +61,16 @@ body { background:#08090d; color:#e9e9ee; font-family:'Helvetica Neue',Arial,san
   align-items:center; justify-content:center; gap:10px; cursor:pointer; user-select:none; touch-action:none; }
 #panel-edge:active { background:rgba(14,16,20,0.95); }
 body.panel-hidden #panel-edge { display:flex; }
-#play-bar { display:none; position:absolute; left:60px; right:calc(12px + var(--panel-w,0px)); bottom:calc(12px + env(safe-area-inset-bottom,0px) + var(--panel-h,0px)); z-index:1500; background:rgba(15,15,15,0.96); border:1px solid #ff9f1c; border-radius:12px; padding:10px 12px; box-shadow:0 4px 16px rgba(0,0,0,0.6); max-width:560px; margin-left:auto; }
+#play-bar { display:none; position:absolute; left:60px; right:calc(12px + var(--panel-w,0px) + var(--edge-w,0px)); bottom:calc(12px + env(safe-area-inset-bottom,0px) + var(--panel-h,0px) + var(--edge-h,0px)); z-index:1500; background:rgba(15,15,15,0.96); border:1px solid #ff9f1c; border-radius:12px; padding:10px 12px; box-shadow:0 4px 16px rgba(0,0,0,0.6); max-width:560px; margin-left:auto; }
 #play-bar.show { display:block; }
 .play-ctl { background:#181b23; border:1px solid #343b48; color:#ff9f1c; border-radius:8px; font-size:16px; padding:5px 10px; cursor:pointer; flex-shrink:0; }
-#preview-bar { display:none; position:absolute; left:60px; right:calc(12px + var(--panel-w,0px)); bottom:calc(12px + env(safe-area-inset-bottom,0px) + var(--panel-h,0px)); z-index:1500; background:rgba(15,20,25,0.96); border:1px solid #2a6a8a; border-radius:12px; padding:12px; box-shadow:0 4px 16px rgba(0,0,0,0.6); max-width:520px; margin-left:auto; }
+#preview-bar { display:none; position:absolute; left:60px; right:calc(12px + var(--panel-w,0px) + var(--edge-w,0px)); bottom:calc(12px + env(safe-area-inset-bottom,0px) + var(--panel-h,0px) + var(--edge-h,0px)); z-index:1500; background:rgba(15,20,25,0.96); border:1px solid #2a6a8a; border-radius:12px; padding:12px; box-shadow:0 4px 16px rgba(0,0,0,0.6); max-width:520px; margin-left:auto; }
 #preview-bar.show { display:block; }
 #gps-badge { position:absolute; top:calc(8px + env(safe-area-inset-top,0px)); left:calc(8px + env(safe-area-inset-left,0px)); z-index:1000; background:rgba(0,0,0,0.75); border-radius:20px; padding:5px 10px; font-size:11px; color:#6a6a76; pointer-events:none; }
 #gps-badge.good { color:#44cc44; }
 #gps-badge.bad { color:#cc4444; }
 
-#follow-btn { position:absolute; bottom:calc(12px + env(safe-area-inset-bottom,0px) + var(--panel-h,0px)); right:calc(12px + var(--panel-w,0px)); z-index:1000; width:44px; height:44px; border-radius:50%; border:2px solid #343b48; background:rgba(0,0,0,0.8); color:#7e7e8b; font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+#follow-btn { position:absolute; bottom:calc(12px + env(safe-area-inset-bottom,0px) + var(--panel-h,0px) + var(--edge-h,0px)); right:calc(12px + var(--panel-w,0px) + var(--edge-w,0px)); z-index:1000; width:44px; height:44px; border-radius:50%; border:2px solid #343b48; background:rgba(0,0,0,0.8); color:#7e7e8b; font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
 #follow-btn.active { background:#ff9f1c; color:#000; border-color:#ff9f1c; }
 .maptype-btn { background:#181b23; border:1px solid #343b48; color:#9a9aa6; }
 .maptype-btn.active { background:#ff9f1c; border-color:#ff9f1c; color:#000; font-weight:700; }
@@ -80,6 +80,9 @@ body.panel-hidden #panel-edge { display:flex; }
   background:#0e1014; border-top:2px solid #ff9f1c; display:flex; flex-direction:column;
   padding-bottom:env(safe-area-inset-bottom,0px);
   transition:transform 0.22s ease; }
+/* 画面下端の安全領域まで同じ色で埋めて、黒い帯が出ないようにする */
+#bottom::after { content:''; position:absolute; left:0; right:0; top:100%; height:140px; background:#0e1014; pointer-events:none; }
+body.panel-hidden #bottom::after { display:none; }
 body.panel-hidden #bottom { transform:translateY(105%); }
 body.panel-list #controls { display:none; }
 /* ハンドル（パネルの開け閉め。タップでもスワイプでも動く） */
@@ -230,10 +233,12 @@ body.panel-list #controls { display:none; }
 
 /* スマホ横向き */
 @media (orientation:landscape) and (max-width:1024px) {
-  #bottom { left:auto; top:0; bottom:0; right:0; width:264px; max-height:none;
+  #bottom { left:auto; top:0; bottom:0; right:0; width:calc(264px + env(safe-area-inset-right,0px)); max-height:none;
     border-top:none; border-left:2px solid #ff9f1c;
     overflow-y:auto; -webkit-overflow-scrolling:touch;
-    padding-right:env(safe-area-inset-right,0px); padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); }
+    padding-right:env(safe-area-inset-right,0px); padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  #bottom::after { left:100%; right:auto; top:0; bottom:0; height:auto; width:140px; }
   body.panel-hidden #bottom { transform:translateX(105%); }
   #panel-edge { left:auto; right:0; top:0; bottom:0; width:calc(30px + env(safe-area-inset-right,0px));
     height:auto; padding-bottom:0; padding-right:env(safe-area-inset-right,0px);
@@ -347,8 +352,8 @@ body.panel-list #controls { display:none; }
   </div>
   <div id="gps-badge" data-i18n="gps_waiting">📡 GPS待機中</div>
   <button id="follow-btn" onclick="toggleFollow()">🧭</button>
-  <button id="map-controls-btn" onclick="toggleMapControlsPanel()" style="position:absolute;bottom:calc(12px + env(safe-area-inset-bottom,0px) + var(--panel-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;width:40px;height:40px;border-radius:8px;border:2px solid #343b48;background:rgba(0,0,0,0.85);color:#e9e9ee;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">🗺️</button>
-  <div id="map-controls-panel" style="display:none;position:absolute;bottom:calc(58px + env(safe-area-inset-bottom,0px) + var(--panel-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;background:rgba(20,20,20,0.95);border:1px solid #343b48;border-radius:10px;padding:12px;width:200px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
+  <button id="map-controls-btn" onclick="toggleMapControlsPanel()" style="position:absolute;bottom:calc(12px + env(safe-area-inset-bottom,0px) + var(--panel-h,0px) + var(--edge-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;width:40px;height:40px;border-radius:8px;border:2px solid #343b48;background:rgba(0,0,0,0.85);color:#e9e9ee;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">🗺️</button>
+  <div id="map-controls-panel" style="display:none;position:absolute;bottom:calc(58px + env(safe-area-inset-bottom,0px) + var(--panel-h,0px) + var(--edge-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;background:rgba(20,20,20,0.95);border:1px solid #343b48;border-radius:10px;padding:12px;width:200px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
     <div style="font-size:10px;color:#7e7e8b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;" data-i18n="map_type_label">地図の種類</div>
     <div style="display:flex;gap:6px;margin-bottom:14px;">
       <button class="maptype-btn active" id="maptype-roadmap" onclick="setMapType('roadmap')" style="flex:1;padding:6px 4px;font-size:11px;border-radius:6px;cursor:pointer;" data-i18n="map_type_default">標準</button>
@@ -426,8 +431,8 @@ body.panel-list #controls { display:none; }
 </div>
 
 <!-- ユーザー設定ダイアログ -->
-<div id="username-dialog" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:99998;align-items:center;justify-content:center;overflow-y:auto;padding:20px 0;">
-  <div style="background:#12141a;border:1px solid #262b36;border-radius:12px;padding:24px;width:340px;max-width:90vw;">
+<div id="username-dialog" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:99998;align-items:flex-start;justify-content:center;overflow-y:auto;padding:calc(16px + env(safe-area-inset-top,0px)) 0 calc(24px + env(safe-area-inset-bottom,0px));">
+  <div style="background:#12141a;border:1px solid #262b36;border-radius:12px;padding:24px;width:340px;max-width:90vw;margin:auto;">
     <h3 style="font-size:14px;color:#ff9f1c;margin-bottom:16px;" data-i18n="settings_title">ユーザー設定</h3>
 
     <label style="font-size:11px;color:#5e5e6b;display:block;margin-bottom:5px;" data-i18n="email_label">メールアドレス</label>
@@ -1760,6 +1765,13 @@ document.addEventListener('click', e=>{
 });
 
 L.control.zoom({ position:'topright' }).addTo(map);
+// 拡大・縮小ボタンがパネルに隠れないようにする
+const zoomCtrlEl = document.querySelector('.leaflet-top.leaflet-right');
+if(zoomCtrlEl){
+  zoomCtrlEl.style.marginRight = 'var(--panel-w, 0px)';
+  zoomCtrlEl.style.marginTop = 'env(safe-area-inset-top, 0px)';
+  zoomCtrlEl.style.transition = 'margin 0.22s ease';
+}
 
 let points=[], polylines=[], addMode=false;
 let navActive=false, navIndex=0;
@@ -1798,12 +1810,12 @@ function onGPS(pos){
   b.textContent=t('gps_accuracy',{m:Math.round(accuracy)});
   b.className=accuracy<30?'good':accuracy<100?'':'bad';
   // 初回だけ現在地に移動
-  if(!gpsInitialized){ map.setView([lat,lng],16); gpsInitialized=true; }
+  if(!gpsInitialized){ setViewVisible([lat,lng],16); gpsInitialized=true; }
   if(!gpsMarker){
     gpsMarker=createGpsMarker(lat,lng);
     gpsCircle=L.circle([lat,lng],{radius:accuracy,color:'#2ea8ff',fillColor:'#2ea8ff',fillOpacity:0.08,weight:1}).addTo(map);
   }else{ gpsMarker.setLatLng([lat,lng]); gpsCircle.setLatLng([lat,lng]).setRadius(accuracy); }
-  if(followMode)map.panTo([lat,lng]);
+  if(followMode)panToVisible([lat,lng]);
   if(navActive){
     checkProgress(lat,lng);
     // ナビバーの距離をリアルタイム更新
@@ -1820,12 +1832,44 @@ function onGPS(pos){
 }
 function onGPSErr(){ const b=document.getElementById('gps-badge'); b.textContent=t('gps_error'); b.className='bad'; }
 
+// パネルに隠れないよう、見えている部分の中心に来るように寄せる
+// 範囲表示の余白（パネルに隠れる分を足す）
+function fitPadTL(base){ const b = base||50; return [b, b]; }
+function fitPadBR(base){
+  const b = base||50;
+  const cs = getComputedStyle(document.documentElement);
+  const px = k => parseFloat(cs.getPropertyValue(k)) || 0;
+  return [b + px('--panel-w') + px('--edge-w'), b + px('--panel-h') + px('--edge-h')];
+}
+
+function panelOffset(){
+  const land = isLandscapePanel();
+  const cs = getComputedStyle(document.documentElement);
+  const px = k => parseFloat(cs.getPropertyValue(k)) || 0;
+  return land
+    ? { x: -(px('--panel-w') + px('--edge-w')) / 2, y: 0 }
+    : { x: 0, y: -(px('--panel-h') + px('--edge-h')) / 2 };
+}
+
+// 地図の中心を、見えている部分の中心に合わせて移動する
+function panToVisible(latlng, opts){
+  const off = panelOffset();
+  const pt = map.latLngToContainerPoint(latlng);
+  map.panTo(map.containerPointToLatLng([pt.x - off.x, pt.y - off.y]), opts);
+}
+
+function setViewVisible(latlng, zoom){
+  map.setView(latlng, zoom);
+  const off = panelOffset();
+  if(off.x || off.y) map.panBy([-off.x, -off.y], {animate:false});
+}
+
 function toggleFollow(){
   if(!followMode){
     // followModeがOFF → 現在地に移動してON
     followMode=true;
     document.getElementById('follow-btn').classList.add('active');
-    if(gpsMarker) map.panTo(gpsMarker.getLatLng());
+    if(gpsMarker) panToVisible(gpsMarker.getLatLng());
   } else {
     // followModeがON → 現在地にポイント追加（followModeはONのまま）
     if(gpsMarker){
@@ -2596,7 +2640,7 @@ async function startPlayback(){
   buildPlayLines();
   playMarker = L.marker(playSegs[0].coords[0], {icon:L.divIcon({html:playIconHTML(0), iconSize:[44,44], iconAnchor:[22,22], className:''}), zIndexOffset:2000}).addTo(playLayer);
   playPos = 0;
-  map.setView(playSegs[0].coords[0], Math.max(map.getZoom(),15));
+  setViewVisible(playSegs[0].coords[0], Math.max(map.getZoom(),15));
   document.getElementById('play-bar').classList.add('show');
   document.getElementById('play-slider').value = 0;
   setPlayLineModeLabels();
@@ -2667,7 +2711,7 @@ function drawPlayAt(dist){
   // 通り過ぎたポイントのピンを出す
   const showAllPins = document.getElementById('play-pins').checked;
   points.forEach((p,idx)=>{ if(p.marker) p.marker.setOpacity((showAllPins || idx<=reached) ? 1 : 0); });
-  if(document.getElementById('play-follow').checked) map.panTo(pos, {animate:false});
+  if(document.getElementById('play-follow').checked) panToVisible(pos, {animate:false});
   document.getElementById('play-dist').textContent = formatDist(dist) + ' / ' + formatDist(playTotal);
   document.getElementById('play-slider').value = Math.round(dist/playTotal*1000);
 }
@@ -3014,8 +3058,8 @@ async function searchAddress(){
   followMode=false;
   document.getElementById('follow-btn').classList.remove('active');
   // 候補が全部入るように地図を広げる（1件だけならその場所へ移動）
-  if(results.length===1) map.setView([results[0].lat, results[0].lng], 16);
-  else map.fitBounds(results.map(r=>[r.lat,r.lng]), {padding:[60,60], maxZoom:16});
+  if(results.length===1) setViewVisible([results[0].lat, results[0].lng], 16);
+  else map.fitBounds(results.map(r=>[r.lat,r.lng]), {paddingTopLeft:fitPadTL(60), paddingBottomRight:fitPadBR(60), maxZoom:16});
 }
 
 function renderSearchResults(){
@@ -3054,7 +3098,7 @@ function gotoSearchResult(i){
   const r = searchResults[i]; if(!r) return;
   followMode=false;
   document.getElementById('follow-btn').classList.remove('active');
-  map.setView([r.lat,r.lng], Math.max(map.getZoom(),16));
+  setViewVisible([r.lat,r.lng], Math.max(map.getZoom(),16));
   if(searchMarkers[i]) searchMarkers[i].openTooltip();
 }
 
@@ -3327,7 +3371,7 @@ function openEditPopup(id, anchorEl){
   // 地図をそのポイントに移動（追従は一時停止）
   followMode=false;
   document.getElementById('follow-btn').classList.remove('active');
-  map.panTo([p.lat, p.lng]);
+  panToVisible([p.lat, p.lng]);
 
   // ルートリストをそのポイントにスクロール
   const idx = points.indexOf(p);
@@ -4560,7 +4604,7 @@ function focusSavedPoint(id){
   closeRouteList();
   followMode=false;
   document.getElementById('follow-btn').classList.remove('active');
-  map.setView([p.lat,p.lng], Math.max(map.getZoom(),16));
+  setViewVisible([p.lat,p.lng], Math.max(map.getZoom(),16));
 }
 
 function editSavedPointFromList(id){
@@ -5073,14 +5117,14 @@ function pointPopupHTML(name, memo, photo){
 // 全部入る大きさで、全ポイントの中心に一番近いポイントを中心にする
 function fitPointsAroundCenter(latlngs){
   if(!latlngs.length) return;
-  if(latlngs.length===1){ map.setView(latlngs[0], Math.max(map.getZoom(),16)); return; }
+  if(latlngs.length===1){ setViewVisible(latlngs[0], Math.max(map.getZoom(),16)); return; }
   const b = L.latLngBounds(latlngs);
   const c = b.getCenter();
   let best = latlngs[0], bestD = Infinity;
   latlngs.forEach(ll=>{ const d = calcDist(c.lat,c.lng,ll[0],ll[1]); if(d<bestD){ bestD=d; best=ll; } });
   let dLat = 0, dLng = 0;
   latlngs.forEach(ll=>{ dLat=Math.max(dLat,Math.abs(ll[0]-best[0])); dLng=Math.max(dLng,Math.abs(ll[1]-best[1])); });
-  map.fitBounds([[best[0]-dLat,best[1]-dLng],[best[0]+dLat,best[1]+dLng]], {padding:[50,50]});
+  map.fitBounds([[best[0]-dLat,best[1]-dLng],[best[0]+dLat,best[1]+dLng]], {paddingTopLeft:fitPadTL(), paddingBottomRight:fitPadBR()});
 }
 
 async function drawPreviewRoute(route){
@@ -5147,8 +5191,8 @@ async function startPreview(state){
   } else {
     const lls = [];
     state.items.forEach(r=>(r.points||[]).forEach(d=>lls.push([d.lat,d.lng])));
-    if(lls.length===1) map.setView(lls[0], Math.max(map.getZoom(),16));
-    else if(lls.length) map.fitBounds(lls, {padding:[50,50]});
+    if(lls.length===1) setViewVisible(lls[0], Math.max(map.getZoom(),16));
+    else if(lls.length) map.fitBounds(lls, {paddingTopLeft:fitPadTL(), paddingBottomRight:fitPadBR()});
     for(const r of state.items){ await drawPreviewRoute(r); }
   }
 }
@@ -5453,11 +5497,17 @@ function setPanelState(state){
 // パネルの大きさを測って、地図上のボタンが隠れないようにする
 function updatePanelMetrics(){
   const panel = document.getElementById('bottom');
+  const edge = document.getElementById('panel-edge');
   const hidden = panelState==='hidden';
   const land = isLandscapePanel();
   const st = document.documentElement.style;
   st.setProperty('--panel-h', (!hidden && !land) ? panel.offsetHeight + 'px' : '0px');
   st.setProperty('--panel-w', (!hidden && land) ? panel.offsetWidth + 'px' : '0px');
+  // パネルを隠している時に出る端のバーの分
+  st.setProperty('--edge-h', (hidden && !land) ? edge.offsetHeight + 'px' : '0px');
+  st.setProperty('--edge-w', (hidden && land) ? edge.offsetWidth + 'px' : '0px');
+  const zc = document.querySelector('.leaflet-top.leaflet-right');
+  if(zc) zc.style.marginRight = `calc(var(--panel-w, 0px) + var(--edge-w, 0px))`;
 }
 
 function updatePanelLabels(){
