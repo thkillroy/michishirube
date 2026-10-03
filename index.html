@@ -1639,7 +1639,8 @@ function initGoogleLayer(){
   }
 }
 if(window._googleMapsReady){
-  initGoogleLayer();
+  // 後ろで定義される地図スタイル（MAP_BASE_STYLES等）の準備が終わってから実行する
+  setTimeout(initGoogleLayer, 0);
 } else {
   window._onGoogleMapsReadyCallback = initGoogleLayer;
 }
