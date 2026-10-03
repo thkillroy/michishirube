@@ -731,6 +731,15 @@ body.panel-list #controls { display:none; }
 
 <script>
 const MAPTILER_KEY = 'RXZt95T89eK6jTrAs2kn';
+// ===== アプリ（Capacitor）で動いているかの判定 =====
+// アプリ内ではページの住所が https://localhost になるため、外に出すURLはWeb版の住所に固定する
+const WEB_APP_URL = 'https://thkilroy.com/michishirube/';
+function isNativeApp(){
+  return !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+}
+function appBaseUrl(){
+  return isNativeApp() ? WEB_APP_URL : window.location.origin + window.location.pathname;
+}
 const SUPABASE_URL = 'https://zryfljpzllnkukbitfpl.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpyeWZsanB6bGxua3VrYml0ZnBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk4MTI4NDcsImV4cCI6MjEwNTM4ODg0N30.RySxqFIiVBvwuwujMjODTkrxD3AJWD26yhqJsEojhMI';
 
@@ -3605,7 +3614,7 @@ async function authSubmit(){
   btn.textContent = '...'; btn.disabled = true;
 
   try {
-    const redirectTo = window.location.origin + window.location.pathname;
+    const redirectTo = appBaseUrl();
     const endpoint = currentAuthTab==='login'
       ? '/auth/v1/token?grant_type=password'
       : '/auth/v1/signup?redirect_to=' + encodeURIComponent(redirectTo);
@@ -3767,7 +3776,7 @@ async function sendPasswordReset(){
   errEl.style.display='none'; okEl.style.display='none';
   if(!email){ errEl.textContent = t('err_email_password_required'); errEl.style.display='block'; return; }
   try{
-    const redirectTo = window.location.origin + window.location.pathname;
+    const redirectTo = appBaseUrl();
     // redirect_toはJSON本体ではなくクエリパラメータで渡す
     // （GitHub Pagesのようなサブパス構成だと、本体で渡してもSupabase側でパスが欠落する既知の問題があるため）
     const res = await fetch(SUPABASE_URL + '/auth/v1/recover?redirect_to=' + encodeURIComponent(redirectTo), {
@@ -4687,7 +4696,7 @@ function refreshLikeViews(){
 
 // ===== リンク（?r= ルート / ?p= 固定ポイント / ?rg= ルートのフォルダ / ?pg= 固定ポイントのフォルダ） =====
 function buildShareLink(kindParam, id){
-  return location.origin + location.pathname + '?' + kindParam + '=' + id;
+  return appBaseUrl() + '?' + kindParam + '=' + id;
 }
 
 async function copyShareLink(kindParam, id, visibility){
@@ -5641,7 +5650,8 @@ initAds();
 setTimeout(openSharedLink, 800);
 
 // PWA（ホーム画面のアプリとして動かすための登録）
-if('serviceWorker' in navigator){
+// アプリ（Capacitor）内では不要なので登録しない
+if('serviceWorker' in navigator && !isNativeApp()){
   window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('./sw.js').catch(e=>console.warn('SW登録失敗', e));
   });
