@@ -6135,12 +6135,16 @@ function togglePanelListOnly(){ setPanelState(panelState==='list' ? 'full' : 'li
       const land = isLandscapePanel();
       const away = land ? dx : dy;      // 横向きは右へ、縦向きは下へ＝しまう
       const cross = land ? dy : dx;
+      // 指で操作した時は、この後にブラウザが自動で出す「クリック」を止める。
+      // 止めないと、①同じタップがもう一度処理される ②パネルが動いた後、指の下に来たボタン
+      // （ログイン・フォロー・マイリスト等）が押されたことになる（ゴーストクリック）
+      e.preventDefault();
       if(Math.abs(away) > 40 && Math.abs(away) > Math.abs(cross)){
         if(away > 0) onAway(); else onBack();
       } else if(!moved){
         onTap();
       }
-    }, {passive:true});
+    }, {passive:false});
     el.addEventListener('click', e=>{ if(e.detail) onTap(); });
   }
 
