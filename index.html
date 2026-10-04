@@ -2860,6 +2860,24 @@ function canWebRecord(){
   return !isNativeApp() && !!(navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function') && typeof window.MediaRecorder === 'function';
 }
 let recStream = null, recRecorder = null, recChunks = [], recMime = '', recActive = false;
+let recKind = null; // 'web'＝PCブラウザで録画 / 'native'＝アプリで録画 / null＝表示だけ
+// アプリ（Android）の録画プラグイン（自作：ScreenRecorder）
+function nativeRecorder(){
+  return (isNativeApp() && window.Capacitor.Plugins && window.Capacitor.Plugins.ScreenRecorder) || null;
+}
+function canNativeRecord(){ return !!nativeRecorder(); }
+function showNativeSaved(r){
+  if(r && r.ok) alert(t('rec_saved_dir',{dir:r.folder, file:r.file}));
+  else alert(t('rec_save_fail'));
+}
+// 通知などアプリの外から録画が止められた時
+try{
+  const nr = nativeRecorder();
+  if(nr) nr.addListener('recordingStopped', r=>{
+    if(recKind === 'native'){ recActive = false; recKind = null; exitRecMode(); }
+    showNativeSaved(r);
+  });
+}catch(e){ console.warn('recordingStopped listener', e); }
 
 // 保存先フォルダの記憶（ブラウザ内のIndexedDBに、選んだフォルダの「鍵」をしまう）
 function recDb(){
@@ -2874,6 +2892,11 @@ async function recDbSet(k,v){ const db = await recDb(); return new Promise(ok=>{
 
 // 📁ボタン：保存先フォルダを選ぶ
 async function chooseRecDir(){
+  const nr = nativeRecorder();
+  if(nr){
+    try{ const r = await nr.chooseFolder(); updateRecDirBtn(); alert(t('rec_dir_set',{name:r.folder})); }catch(e){ /* キャンセル */ }
+    return;
+  }
   if(!window.showDirectoryPicker){ alert(t('rec_dir_unsupported')); return; }
   try{
     const h = await window.showDirectoryPicker({ id:'michishirube-rec', mode:'readwrite', startIn:'videos' });
@@ -2884,6 +2907,12 @@ async function chooseRecDir(){
 }
 async function updateRecDirBtn(h){
   const b = document.getElementById('rec-dir-btn'); if(!b) return;
+  const nr = nativeRecorder();
+  if(nr){
+    b.style.display = '';
+    try{ const r = await nr.getFolder(); b.title = t('rec_dir_btn') + '：' + r.folder; }catch(e){}
+    return;
+  }
   if(!canWebRecord()){ b.style.display = 'none'; return; }
   b.style.display = '';
   if(h === undefined){ try{ h = await recDbGet('dir'); }catch(e){ h = null; } }
@@ -2948,16 +2977,18 @@ async function startWebRecording(){
 async function enterRecMode(){
   if(!playLayer) return;
   if(document.body.classList.contains('rec-mode')) return;
-  let recording = false;
-  if(canWebRecord()){
-    try{ await startWebRecording(); recording = true; }
+  recKind = null;
+  if(canNativeRecord()){
+    recKind = 'native';            // アプリ：案内を見せた後にAndroidの録画確認を出す
+  } else if(canWebRecord()){
+    try{ await startWebRecording(); recKind = 'web'; }
     catch(e){ console.warn('録画開始失敗', e); alert(t('rec_fail')); recStream = null; recRecorder = null; return; }
   } else if(!isNativeApp()){
     // スマホのブラウザ：録画はできないので、画面だけ整えて端末の画面録画を使ってもらう
     alert(t('rec_mobile_web'));
   }
   recPrevPanelState = panelState;
-  if(!recording) recSystemBars(true);
+  if(recKind !== 'web') recSystemBars(true);
   document.getElementById('map-controls-panel').style.display = 'none';
   document.body.classList.add('rec-mode');
   setPanelState('hidden');
@@ -2967,16 +2998,27 @@ async function enterRecMode(){
   if(playPos >= playTotal){ playPos = 0; document.getElementById('play-slider').value = 0; }
   drawPlayAt(playPos);
   const hint = document.getElementById('rec-hint');
-  hint.textContent = t(recording ? 'rec_hint_recording' : 'play_rec_hint');
+  hint.textContent = t(recKind ? 'rec_hint_recording' : 'play_rec_hint');
   hint.classList.remove('hide');
   clearTimeout(recTimer);
+  const kind = recKind;
   recTimer = setTimeout(()=>{
     hint.classList.add('hide');
-    recTimer = setTimeout(()=>{
-      if(!document.body.classList.contains('rec-mode')) return;
+    recTimer = setTimeout(async ()=>{
+      if(!document.body.classList.contains('rec-mode') || recKind !== kind) return;
       // 案内が消えてから録画開始 → 少し置いて再生開始（案内は動画に入らない）
-      if(recording && recRecorder && recRecorder.state === 'inactive'){ recRecorder.start(1000); recActive = true; }
-      setTimeout(()=>{ if(document.body.classList.contains('rec-mode') && !playRunning) togglePlay(); }, recording ? 400 : 0);
+      if(kind === 'web' && recRecorder && recRecorder.state === 'inactive'){
+        recRecorder.start(1000); recActive = true;
+      } else if(kind === 'native'){
+        try{ await nativeRecorder().start(); recActive = true; }
+        catch(e){
+          recKind = null; exitRecMode();
+          if(!e || e.code !== 'CANCELLED') alert(t('rec_fail'));
+          return;
+        }
+      }
+      const wait = kind === 'native' ? 800 : (kind === 'web' ? 400 : 0);
+      setTimeout(()=>{ if(document.body.classList.contains('rec-mode') && !playRunning) togglePlay(); }, wait);
     }, 600);
   }, 1500);
 }
@@ -2984,11 +3026,17 @@ async function enterRecMode(){
 function exitRecMode(){
   if(!document.body.classList.contains('rec-mode')) return;
   clearTimeout(recTimer);
-  // 録画中なら止めて保存（フォルダの許可確認はタップした瞬間に始める）
-  if(recRecorder){
+  if(recKind === 'native'){
+    // アプリの録画を止めて保存 → どこに保存したかを表示
+    const wasActive = recActive;
+    recActive = false; recKind = null;
+    if(wasActive) nativeRecorder().stop().then(showNativeSaved).catch(()=>alert(t('rec_save_fail')));
+    recSystemBars(false);
+  } else if(recRecorder){
+    // PCブラウザの録画を止めて保存（フォルダの許可確認はタップした瞬間に始める）
     const rec = recRecorder, stream = recStream, wasActive = recActive;
     const perm = wasActive ? recDirPermission() : Promise.resolve('none');
-    recRecorder = null; recStream = null; recActive = false;
+    recRecorder = null; recStream = null; recActive = false; recKind = null;
     rec.onstop = ()=>{
       if(stream) stream.getTracks().forEach(tr=>tr.stop());
       if(wasActive && recChunks.length) saveRecording(new Blob(recChunks, { type:recMime }), perm);
@@ -2996,6 +3044,7 @@ function exitRecMode(){
     };
     if(rec.state !== 'inactive') rec.stop(); else rec.onstop();
   } else {
+    recKind = null;
     recSystemBars(false);
   }
   document.body.classList.remove('rec-mode');
