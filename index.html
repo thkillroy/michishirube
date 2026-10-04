@@ -2807,7 +2807,8 @@ function drawPlayAt(dist){
   points.forEach((p,idx)=>{ if(p.marker) p.marker.setOpacity((showAllPins || idx<=reached) ? 1 : 0); });
   if(document.getElementById('play-follow').checked) panToVisible(pos, {animate:false});
   document.getElementById('play-dist').textContent = formatDist(dist) + ' / ' + formatDist(playTotal);
-  document.getElementById('play-slider').value = Math.round(dist/playTotal*1000);
+  // 指でシークバーを動かしている間は、再生側から値を書き戻さない（書き戻すと指の位置に戻されて動かせない）
+  if(!playSeeking) document.getElementById('play-slider').value = Math.round(dist/playTotal*1000);
 }
 
 function headingOf(coords, i){
@@ -2860,6 +2861,17 @@ function restartPlay(){
   drawPlayAt(0);
   if(!playRunning) togglePlay();
 }
+
+// シークバーを触っている最中かどうか
+let playSeeking = false;
+(function(){
+  const sl = document.getElementById('play-slider');
+  if(!sl) return;
+  const on = ()=>{ playSeeking = true; };
+  const off = ()=>{ playSeeking = false; };
+  ['pointerdown','touchstart','mousedown'].forEach(ev=>sl.addEventListener(ev, on, {passive:true}));
+  ['pointerup','pointercancel','touchend','touchcancel','mouseup','change'].forEach(ev=>sl.addEventListener(ev, off, {passive:true}));
+})();
 
 function seekPlay(v){
   if(!playLayer) return;
