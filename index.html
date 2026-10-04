@@ -516,8 +516,10 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
     <select id="lang-select" style="width:100%;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:10px 12px;font-size:14px;margin-bottom:20px;box-sizing:border-box;"></select>
 
     <label style="font-size:11px;color:#5e5e6b;display:block;margin-bottom:5px;" data-i18n="new_password_label">新しいパスワード</label>
+    <form onsubmit="changePassword();return false;" style="margin:0;">
     <input type="password" id="new-password" autocomplete="new-password" data-i18n-placeholder="password_placeholder" placeholder="6文字以上"
       style="width:100%;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:10px 12px;font-size:14px;outline:none;margin-bottom:6px;font-family:inherit;box-sizing:border-box;">
+    </form>
     <div id="password-error" style="font-size:12px;color:#ff6666;margin-bottom:6px;display:none;"></div>
     <div id="password-success" style="font-size:12px;color:#66cc66;margin-bottom:6px;display:none;"></div>
     <button onclick="changePassword()"
@@ -550,6 +552,8 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
         style="flex:1;padding:8px;background:#181b23;border:1px solid #262b36;color:#9a9aa6;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;" data-i18n="signup_tab">新規登録</button>
     </div>
 
+    <!-- ログイン欄をフォームで囲む：ブラウザのパスワード自動入力がこの中だけに効くようにする（検索欄に入らないように） -->
+    <form id="auth-form" onsubmit="authSubmit();return false;" style="margin:0;">
     <div id="username-row" style="display:none;">
       <label style="font-size:11px;color:#5e5e6b;display:block;margin-bottom:4px;" data-i18n="auth_username_label">ユーザー名</label>
       <input type="text" id="auth-username" autocomplete="off" data-i18n-placeholder="auth_username_placeholder" placeholder="例: kilroy_driver（英数字とアンダーバー）"
@@ -562,6 +566,7 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
     <label style="font-size:11px;color:#5e5e6b;display:block;margin-bottom:4px;" data-i18n="password_label">パスワード</label>
     <input type="password" id="auth-password" name="password" autocomplete="current-password" data-i18n-placeholder="password_placeholder" placeholder="6文字以上"
       style="width:100%;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:10px 12px;font-size:14px;outline:none;margin-bottom:8px;font-family:inherit;">
+    </form>
 
     <div id="forgot-password-link" style="text-align:right;margin-bottom:16px;">
       <a href="#" onclick="showForgotPassword();return false;" style="font-size:11px;color:#7e7e8b;text-decoration:underline;" data-i18n="forgot_password_link">パスワードをお忘れですか？</a>
@@ -599,8 +604,10 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
 <div id="set-new-password-dialog" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:99999;align-items:center;justify-content:center;">
   <div style="background:#12141a;border:1px solid #262b36;border-radius:12px;padding:24px;width:320px;max-width:90vw;">
     <h3 style="font-size:14px;color:#ff9f1c;margin-bottom:16px;" data-i18n="new_password_label">新しいパスワード</h3>
+    <form onsubmit="submitNewPassword();return false;" style="margin:0;">
     <input type="password" id="set-new-password" autocomplete="new-password" data-i18n-placeholder="password_placeholder" placeholder="6文字以上"
       style="width:100%;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:10px 12px;font-size:14px;outline:none;margin-bottom:6px;font-family:inherit;box-sizing:border-box;">
+    </form>
     <div id="set-new-password-error" style="font-size:12px;color:#ff6666;margin-bottom:12px;display:none;"></div>
     <button onclick="submitNewPassword()"
       style="width:100%;padding:10px;background:#ff9f1c;border:none;color:#000;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;" data-i18n="change_password_btn">パスワードを変更</button>
