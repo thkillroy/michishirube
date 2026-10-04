@@ -295,9 +295,29 @@ body.panel-list #controls { display:none; }
   .insert-btn { writing-mode:vertical-rl; padding:8px 2px; font-size:12px; width:auto; height:100%; }
   .empty-msg { min-width:300px; }
 }
+/* ===== アプリ起動時のロゴ画面（アプリ版のみ。Web版では表示しない） ===== */
+#app-splash { display:none; position:fixed; inset:0; z-index:99999; background:#08090d;
+  align-items:center; justify-content:center; transition:opacity .4s ease; }
+#app-splash img { width:70%; max-width:420px; height:auto; }
+#app-splash.hide { opacity:0; pointer-events:none; }
 </style>
 </head>
 <body class="notranslate" translate="no">
+
+<div id="app-splash"><img src="kilroy-logo.png" alt="KILROY"></div>
+<script>
+// アプリ（Capacitor）内でだけロゴ画面を出し、1秒後にフェードアウトして消す
+(function(){
+  var el = document.getElementById('app-splash');
+  var native = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+  if(!native){ el.parentNode.removeChild(el); return; }
+  el.style.display = 'flex';
+  setTimeout(function(){
+    el.classList.add('hide');
+    setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 450);
+  }, 1000);
+})();
+</script>
 
 <div id="map-wrap">
   <div id="map"></div>
