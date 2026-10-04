@@ -126,6 +126,9 @@ body.panel-list #controls { display:none; }
 .sr-head { display:flex; align-items:center; justify-content:space-between; padding:5px 8px; background:#14161d; font-size:10px; color:#777; position:sticky; top:0; }
 #search-input { flex:1; background:#12141a; border:1px solid #262b36; border-radius:6px; color:#e9e9ee; padding:8px 10px; font-size:13px; outline:none; }
 #search-input:focus { border-color:#ff9f1c; }
+/* 検索欄を type=search にしたので、ブラウザ独自の見た目（×ボタン等）を消して元の見た目に揃える */
+input[type=search] { -webkit-appearance:none; appearance:none; }
+input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-search-cancel-button { -webkit-appearance:none; display:none; }
 #search-input::placeholder { color:#343b48; }
 #btn-row { display:flex; gap:6px; flex-wrap:wrap; }
 
@@ -446,7 +449,7 @@ body.panel-list #controls { display:none; }
   <div id="controls">
     <div id="search-results"></div>
   <div id="search-row">
-      <input type="text" id="search-input" data-i18n-placeholder="search_placeholder" placeholder="🔍 住所・場所を検索">
+      <input type="search" id="search-input" name="michi-place-search" autocomplete="off" autocorrect="off" spellcheck="false" data-i18n-placeholder="search_placeholder" placeholder="🔍 住所・場所を検索">
       <button class="btn btn-orange" onclick="searchAddress()" data-i18n="search_btn">検索</button>
     </div>
     <div id="btn-row">
@@ -483,7 +486,7 @@ body.panel-list #controls { display:none; }
     <div id="settings-email-display" style="width:100%;background:#08090d;border:1px solid #181b23;border-radius:8px;color:#7e7e8b;padding:10px 12px;font-size:14px;margin-bottom:18px;box-sizing:border-box;"></div>
 
     <label style="font-size:11px;color:#5e5e6b;display:block;margin-bottom:5px;" data-i18n="username_label">ユーザー名（英数字とアンダーバー）</label>
-    <input type="text" id="new-username" data-i18n-placeholder="username_placeholder" placeholder="例: kilroy_driver"
+    <input type="text" id="new-username" autocomplete="off" data-i18n-placeholder="username_placeholder" placeholder="例: kilroy_driver"
       style="width:100%;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:10px 12px;font-size:14px;outline:none;margin-bottom:6px;font-family:inherit;box-sizing:border-box;">
     <div id="username-error" style="font-size:12px;color:#ff6666;margin-bottom:12px;display:none;"></div>
     <button onclick="saveUsername()"
@@ -513,7 +516,7 @@ body.panel-list #controls { display:none; }
     <select id="lang-select" style="width:100%;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:10px 12px;font-size:14px;margin-bottom:20px;box-sizing:border-box;"></select>
 
     <label style="font-size:11px;color:#5e5e6b;display:block;margin-bottom:5px;" data-i18n="new_password_label">新しいパスワード</label>
-    <input type="password" id="new-password" data-i18n-placeholder="password_placeholder" placeholder="6文字以上"
+    <input type="password" id="new-password" autocomplete="new-password" data-i18n-placeholder="password_placeholder" placeholder="6文字以上"
       style="width:100%;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:10px 12px;font-size:14px;outline:none;margin-bottom:6px;font-family:inherit;box-sizing:border-box;">
     <div id="password-error" style="font-size:12px;color:#ff6666;margin-bottom:6px;display:none;"></div>
     <div id="password-success" style="font-size:12px;color:#66cc66;margin-bottom:6px;display:none;"></div>
@@ -549,15 +552,15 @@ body.panel-list #controls { display:none; }
 
     <div id="username-row" style="display:none;">
       <label style="font-size:11px;color:#5e5e6b;display:block;margin-bottom:4px;" data-i18n="auth_username_label">ユーザー名</label>
-      <input type="text" id="auth-username" data-i18n-placeholder="auth_username_placeholder" placeholder="例: kilroy_driver（英数字とアンダーバー）"
+      <input type="text" id="auth-username" autocomplete="off" data-i18n-placeholder="auth_username_placeholder" placeholder="例: kilroy_driver（英数字とアンダーバー）"
         style="width:100%;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:10px 12px;font-size:14px;outline:none;margin-bottom:12px;font-family:inherit;">
     </div>
     <label style="font-size:11px;color:#5e5e6b;display:block;margin-bottom:4px;" data-i18n="email_label">メールアドレス</label>
-    <input type="email" id="auth-email" placeholder="example@email.com"
+    <input type="email" id="auth-email" name="email" autocomplete="username email" placeholder="example@email.com"
       style="width:100%;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:10px 12px;font-size:14px;outline:none;margin-bottom:12px;font-family:inherit;">
     
     <label style="font-size:11px;color:#5e5e6b;display:block;margin-bottom:4px;" data-i18n="password_label">パスワード</label>
-    <input type="password" id="auth-password" data-i18n-placeholder="password_placeholder" placeholder="6文字以上"
+    <input type="password" id="auth-password" name="password" autocomplete="current-password" data-i18n-placeholder="password_placeholder" placeholder="6文字以上"
       style="width:100%;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:10px 12px;font-size:14px;outline:none;margin-bottom:8px;font-family:inherit;">
 
     <div id="forgot-password-link" style="text-align:right;margin-bottom:16px;">
@@ -579,7 +582,7 @@ body.panel-list #controls { display:none; }
   <div style="background:#12141a;border:1px solid #262b36;border-radius:12px;padding:24px;width:320px;max-width:90vw;">
     <h3 style="font-size:14px;color:#ff9f1c;margin-bottom:16px;" data-i18n="forgot_password_title">パスワード再設定</h3>
     <label style="font-size:11px;color:#5e5e6b;display:block;margin-bottom:4px;" data-i18n="email_label">メールアドレス</label>
-    <input type="email" id="forgot-password-email" placeholder="example@email.com"
+    <input type="email" id="forgot-password-email" autocomplete="email" placeholder="example@email.com"
       style="width:100%;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:10px 12px;font-size:14px;outline:none;margin-bottom:12px;font-family:inherit;box-sizing:border-box;">
     <div id="forgot-password-error" style="font-size:12px;color:#ff6666;margin-bottom:12px;display:none;"></div>
     <div id="forgot-password-success" style="font-size:12px;color:#66cc66;margin-bottom:12px;display:none;"></div>
@@ -596,7 +599,7 @@ body.panel-list #controls { display:none; }
 <div id="set-new-password-dialog" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:99999;align-items:center;justify-content:center;">
   <div style="background:#12141a;border:1px solid #262b36;border-radius:12px;padding:24px;width:320px;max-width:90vw;">
     <h3 style="font-size:14px;color:#ff9f1c;margin-bottom:16px;" data-i18n="new_password_label">新しいパスワード</h3>
-    <input type="password" id="set-new-password" data-i18n-placeholder="password_placeholder" placeholder="6文字以上"
+    <input type="password" id="set-new-password" autocomplete="new-password" data-i18n-placeholder="password_placeholder" placeholder="6文字以上"
       style="width:100%;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:10px 12px;font-size:14px;outline:none;margin-bottom:6px;font-family:inherit;box-sizing:border-box;">
     <div id="set-new-password-error" style="font-size:12px;color:#ff6666;margin-bottom:12px;display:none;"></div>
     <button onclick="submitNewPassword()"
@@ -607,7 +610,7 @@ body.panel-list #controls { display:none; }
   <div style="background:#12141a;border:1px solid #262b36;border-radius:12px;padding:24px;width:320px;max-width:90vw;">
     <h3 style="font-size:14px;color:#ff9f1c;margin-bottom:16px;" data-i18n="save_route_title">ルートを保存</h3>
     <label style="font-size:11px;color:#5e5e6b;display:block;margin-bottom:5px;" data-i18n="route_name_label">ルート名</label>
-    <input type="text" id="save-route-name" data-i18n-placeholder="route_name_placeholder" placeholder="例: 月曜ルート、○○配送コース"
+    <input type="text" id="save-route-name" autocomplete="off" data-i18n-placeholder="route_name_placeholder" placeholder="例: 月曜ルート、○○配送コース"
       style="width:100%;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:10px 12px;font-size:14px;outline:none;margin-bottom:12px;font-family:inherit;">
     <label style="font-size:11px;color:#5e5e6b;display:block;margin-bottom:5px;" data-i18n="group_label">フォルダ</label>
     <select id="save-route-group" class="dlg-select"></select>
@@ -634,7 +637,7 @@ body.panel-list #controls { display:none; }
       <button class="follow-tab" id="ftab-requests" onclick="setFollowTab('requests')"></button>
     </div>
     <div id="follow-search-row" style="display:flex;gap:6px;margin-bottom:10px;">
-      <input type="text" id="follow-search-input" data-i18n-placeholder="follow_search_placeholder" placeholder="ユーザー名で検索"
+      <input type="search" id="follow-search-input" autocomplete="off" data-i18n-placeholder="follow_search_placeholder" placeholder="ユーザー名で検索"
         style="flex:1;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:9px 12px;font-size:14px;outline:none;font-family:inherit;min-width:0;"
         onkeydown="if(event.key==='Enter')searchUsers()">
       <button class="btn btn-orange" onclick="searchUsers()" data-i18n="search_btn">検索</button>
@@ -700,7 +703,7 @@ body.panel-list #controls { display:none; }
 <div id="edit-popup">
   <div id="edit-popup-title"></div>
   <label data-i18n="point_name_label">ポイント名</label>
-  <input type="text" id="edit-popup-name" data-i18n-placeholder="point_name_placeholder" placeholder="名前（省略OK）">
+  <input type="text" id="edit-popup-name" autocomplete="off" data-i18n-placeholder="point_name_placeholder" placeholder="名前（省略OK）">
   <label data-i18n="memo_label">メモ</label>
   <textarea id="edit-popup-memo" data-i18n-placeholder="memo_placeholder" placeholder="曲がり方向など"></textarea>
   <button onclick="openConvertToFixedModal()" style="width:100%;padding:8px;background:#332800;border:1px solid #ff9f1c;color:#ff9f1c;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;" data-i18n="save_as_fixed_btn">⭐ 固定ポイントとして保存</button>
@@ -715,7 +718,7 @@ body.panel-list #controls { display:none; }
       <button type="button" id="target-fixedpoint-btn" class="maptype-btn" onclick="setModalTarget('fixedpoint')" style="flex:1;padding:8px 4px;font-size:12px;border-radius:8px;cursor:pointer;" data-i18n="target_fixedpoint_label">⭐ 固定ポイント</button>
     </div>
     <label data-i18n="point_name_label2">ポイント名（省略OK）</label>
-    <input type="text" id="modal-name" data-i18n-placeholder="modal_name_placeholder" placeholder="例: ○○工場、△△倉庫">
+    <input type="text" id="modal-name" autocomplete="off" data-i18n-placeholder="modal_name_placeholder" placeholder="例: ○○工場、△△倉庫">
     <label data-i18n="memo_label2">メモ（曲がり方向など）</label>
     <textarea id="modal-memo-input" data-i18n-placeholder="modal_memo_placeholder" placeholder="例: 右折して200m先&#10;門の前で停車"></textarea>
     <div id="icon-picker-row">
@@ -5300,7 +5303,7 @@ function renderEveryone(){
       <button class="follow-tab${evKind==='point'?' active':''}" onclick="setEvKind('point')">${t('tab_points')}</button>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:10px;">
-      <input type="text" id="ev-search-input" placeholder="${fEsc(t('follow_search_placeholder'))}"
+      <input type="search" id="ev-search-input" autocomplete="off" placeholder="${fEsc(t('follow_search_placeholder'))}"
         style="flex:1;min-width:0;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:8px 10px;font-size:13px;outline:none;font-family:inherit;"
         onkeydown="if(event.key==='Enter')evSearch()">
       <button class="btn btn-orange" onclick="evSearch()">${t('search_btn')}</button>
