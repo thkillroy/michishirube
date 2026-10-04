@@ -2704,12 +2704,12 @@ async function startPlayback(){
   updateRecDirBtn();
   document.getElementById('play-slider').value = 0;
   setPlayLineModeLabels();
-  playRunning = true;
+  // すぐには走らせず、スタート地点で一時停止した状態で待つ（▶か🎬で開始）
+  playRunning = false;
   requestWakeLock();
   refreshAdVisibility();
-  document.getElementById('play-toggle').textContent = '⏸';
-  playLastT = performance.now();
-  playRAF = requestAnimationFrame(playStep);
+  document.getElementById('play-toggle').textContent = '▶';
+  drawPlayAt(0);
 }
 
 function buildPlayLines(){
