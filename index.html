@@ -339,12 +339,13 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
     <div style="display:flex;align-items:center;gap:8px;">
       <button class="play-ctl" id="play-toggle" onclick="togglePlay()">⏸</button>
       <button class="play-ctl" onclick="restartPlay()">⟲</button>
-      <input type="range" id="play-slider" min="0" max="1000" value="0" oninput="seekPlay(this.value)" style="flex:1;min-width:0;">
-      <span id="play-dist" style="font-size:11px;color:#9a9aa6;white-space:nowrap;"></span>
+      <span id="play-dist" style="flex:1;min-width:0;text-align:center;font-size:11px;color:#9a9aa6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
       <button class="play-ctl" id="rec-btn" onclick="onRecButton()" data-i18n-title="play_rec" title="録画モード">🎬</button>
       <button class="play-ctl" id="rec-dir-btn" onclick="chooseRecDir()" title="保存先フォルダ" style="display:none;">📁</button>
       <button class="play-ctl" onclick="closePlayback()">✕</button>
     </div>
+    <!-- シークバーは専用の1行（ボタンと同じ行だと、スマホでは幅が0近くまで潰れて操作できなかった） -->
+    <input type="range" id="play-slider" min="0" max="1000" value="0" oninput="seekPlay(this.value)" style="display:block;width:100%;margin:10px 0 2px;height:24px;">
     <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;">
       <span style="font-size:11px;color:#7e7e8b;" data-i18n="play_speed">速度</span>
       <select id="play-speed" onchange="playSpeed=parseFloat(this.value)" style="background:#08090d;border:1px solid #343b48;border-radius:6px;color:#e9e9ee;padding:4px 6px;font-size:12px;">
