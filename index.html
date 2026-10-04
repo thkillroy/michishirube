@@ -50,7 +50,7 @@ window._initialLang = _detectInitialLangEarly();
 html, body { height:100%; }
 body { background:#08090d; color:#e9e9ee; font-family:'Helvetica Neue',Arial,sans-serif; position:fixed; inset:0; overflow:hidden; }
 
-#map-wrap { position:fixed; inset:0; z-index:0; }
+#map-wrap { position:fixed; inset:0; top:var(--ad-shift,0px); z-index:0; }
 #map { width:100%; height:100%; }
 
 /* パネルが隠れている時に画面の端に出るバー */
@@ -247,7 +247,7 @@ body.panel-list #controls { display:none; }
 
 /* スマホ横向き */
 @media (orientation:landscape) and (max-width:1024px) {
-  #bottom { left:auto; top:0; bottom:0; right:0; width:calc(264px + env(safe-area-inset-right,0px)); max-height:none;
+  #bottom { left:auto; top:var(--ad-shift,0px); bottom:0; right:0; width:calc(264px + env(safe-area-inset-right,0px)); max-height:none;
     border-top:none; border-left:2px solid #ff9f1c;
     overflow-y:auto; -webkit-overflow-scrolling:touch;
     padding-right:env(safe-area-inset-right,0px); padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
@@ -340,7 +340,7 @@ body.panel-list #controls { display:none; }
       <span id="play-dist" style="font-size:11px;color:#9a9aa6;white-space:nowrap;"></span>
       <button class="play-ctl" id="rec-btn" onclick="onRecButton()" data-i18n-title="play_rec" title="録画モード">🎬</button>
       <button class="play-ctl" id="rec-dir-btn" onclick="chooseRecDir()" title="保存先フォルダ" style="display:none;">📁</button>
-      <button class="play-ctl" onclick="stopPlay()">✕</button>
+      <button class="play-ctl" onclick="closePlayback()">✕</button>
     </div>
     <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;">
       <span style="font-size:11px;color:#7e7e8b;" data-i18n="play_speed">速度</span>
@@ -5809,6 +5809,7 @@ let adLoaded = false;
 
 // AdSenseの読み込み（サイト確認用にも使う）
 function initAds(){
+  if(isNativeApp()){ initAdMob(); return; }   // アプリではAdSenseは使わない（AdMobのルール）
   if(!AD_CLIENT) return;
   if(!document.querySelector('script[data-ad-client-loaded]')){
     const sc = document.createElement('script');
@@ -5821,6 +5822,91 @@ function initAds(){
   refreshAdVisibility();
 }
 
+// ===== AdMob（アプリ版の広告） =====
+// いまはGoogle公式のテスト用ID。AdMob登録後に本番IDへ差し替える
+const ADMOB_TESTING = true;
+const ADMOB_IDS = {
+  banner:       'ca-app-pub-3940256099942544/9214589741',  // テスト：アダプティブバナー
+  interstitial: 'ca-app-pub-3940256099942544/1033173712',  // テスト：全画面広告
+  reward:       'ca-app-pub-3940256099942544/5224354917',  // テスト：リワード動画
+};
+const INTERSTITIAL_GAP_MS = 3 * 60 * 1000;   // 全画面広告は前回から3分以上空いた時だけ
+let admobReady = false, admobBannerMade = false, admobBannerShown = false, admobInterLoaded = false;
+
+function admob(){ return (isNativeApp() && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) || null; }
+// 有料会員かどうか（課金の仕組みができるまでは全員「無料」）
+function isPremium(){ return false; }
+
+// バナーの高さぶん、地図を下げる（ステータスバーの下にバナーが入る）
+function setAdShift(h){
+  document.documentElement.style.setProperty('--ad-shift', h > 0 ? `calc(env(safe-area-inset-top,0px) + ${h}px)` : '0px');
+  if(window.map) setTimeout(()=>{ map.invalidateSize(); if(typeof updatePanelMetrics === 'function') updatePanelMetrics(); }, 60);
+}
+
+async function initAdMob(){
+  const am = admob(); if(!am || admobReady) return;
+  try{
+    await am.initialize({ initializeForTesting: ADMOB_TESTING });
+    am.addListener('bannerAdSizeChanged', info=>{ setAdShift(admobBannerShown && info ? info.height : 0); });
+    am.addListener('interstitialAdDismissed', ()=>{ admobInterLoaded = false; prepareInterstitial(); });
+    am.addListener('interstitialAdFailedToShow', ()=>{ admobInterLoaded = false; });
+    admobReady = true;
+    refreshAdMobBanner();
+    prepareInterstitial();
+  }catch(e){ console.warn('AdMob初期化失敗', e); }
+}
+
+// バナー：ナビ中・再生モード中（録画モード含む）・有料会員は出さない
+function admobBannerShouldShow(){
+  if(isPremium()) return false;
+  if(typeof navActive !== 'undefined' && navActive) return false;
+  if(document.getElementById('play-bar').classList.contains('show')) return false;
+  return true;
+}
+async function refreshAdMobBanner(){
+  const am = admob(); if(!am || !admobReady) return;
+  const show = admobBannerShouldShow();
+  try{
+    if(show && !admobBannerShown){
+      admobBannerShown = true;
+      if(!admobBannerMade){
+        admobBannerMade = true;
+        await am.showBanner({ adId:ADMOB_IDS.banner, adSize:'ADAPTIVE_BANNER', position:'TOP_CENTER', margin:0, isTesting:ADMOB_TESTING });
+      } else {
+        await am.resumeBanner();
+      }
+    } else if(!show && admobBannerShown){
+      admobBannerShown = false;
+      setAdShift(0);
+      await am.hideBanner();
+    }
+  }catch(e){ console.warn('バナー表示失敗', e); }
+}
+
+// 全画面広告：先に読み込んでおき、再生モードを閉じた時に出す
+async function prepareInterstitial(){
+  const am = admob(); if(!am || !admobReady || admobInterLoaded || isPremium()) return;
+  try{ await am.prepareInterstitial({ adId:ADMOB_IDS.interstitial, isTesting:ADMOB_TESTING }); admobInterLoaded = true; }
+  catch(e){ console.warn('全画面広告の読み込み失敗', e); }
+}
+async function maybeShowInterstitial(){
+  const am = admob(); if(!am || !admobReady || isPremium()) return;
+  let last = 0; try{ last = parseInt(localStorage.getItem('admob_inter_last') || '0', 10) || 0; }catch(e){}
+  if(Date.now() - last < INTERSTITIAL_GAP_MS) return;
+  if(!admobInterLoaded){ prepareInterstitial(); return; }
+  try{
+    admobInterLoaded = false;
+    try{ localStorage.setItem('admob_inter_last', String(Date.now())); }catch(e){}
+    await am.showInterstitial();
+  }catch(e){ console.warn('全画面広告の表示失敗', e); prepareInterstitial(); }
+}
+
+// ✕：再生モードを閉じる → 無料ならタイミングを見て全画面広告
+function closePlayback(){
+  stopPlay();
+  setTimeout(maybeShowInterstitial, 300);
+}
+
 // ナビ中・再生中は広告を出さない
 function adShouldShow(){
   if(!AD_CLIENT || !AD_SLOT) return false;
@@ -5831,6 +5917,7 @@ function adShouldShow(){
 }
 
 function refreshAdVisibility(){
+  if(isNativeApp()){ refreshAdMobBanner(); return; }
   const slot = document.getElementById('ad-slot');
   if(!slot) return;
   const show = adShouldShow();
