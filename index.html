@@ -432,7 +432,7 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
   </div>
   <div id="gps-badge" data-i18n="gps_waiting">📡 GPS待機中</div>
   <button id="follow-btn" onclick="event.stopPropagation(); toggleFollow();"
-    ontouchend="event.stopPropagation();" ontouchstart="event.stopPropagation();">🧭</button>
+    ontouchend="event.stopPropagation();" ontouchstart="event.stopPropagation();"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="display:block;margin:auto;"><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
   <button id="map-controls-btn" onclick="event.stopPropagation(); toggleMapControlsPanel();" ontouchstart="event.stopPropagation();" ontouchend="event.stopPropagation();" style="position:absolute;touch-action:manipulation;bottom:calc(12px + env(safe-area-inset-bottom,0px) + var(--panel-h,0px) + var(--edge-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;width:40px;height:40px;border-radius:8px;border:2px solid #343b48;background:rgba(0,0,0,0.85);color:#e9e9ee;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">🗺️</button>
   <div id="map-controls-panel" style="display:none;position:absolute;max-height:calc(100dvh - 90px - env(safe-area-inset-top,0px) - var(--panel-h,0px) - var(--edge-h,0px));overflow-y:auto;-webkit-overflow-scrolling:touch;bottom:calc(58px + env(safe-area-inset-bottom,0px) + var(--panel-h,0px) + var(--edge-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;background:rgba(20,20,20,0.95);border:1px solid #343b48;border-radius:10px;padding:12px;width:200px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
     <div style="font-size:10px;color:#7e7e8b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;" data-i18n="map_type_label">地図の種類</div>
@@ -5076,7 +5076,6 @@ function visButtonsHTML(current, handlerTemplate){
 }
 
 function toggleGroupOpen(id){
-  if(mlSelectMode) return;   // 選択中はフォルダの開閉で一覧が動かないように
   if(expandedGroups.has(id)) expandedGroups.delete(id); else expandedGroups.add(id);
   saveExpanded();
   renderMyList();
@@ -5980,6 +5979,7 @@ async function savePreview(){
   const destId = document.getElementById('pv-dest').value || null;
   if(st.kind==='route') lastRouteGroupId = destId; else lastPointGroupId = destId;
   let added = 0, skipped = 0, overwritten = 0;
+  let showRouteId = null;   // コピー後に地図に出すルート
   try{
     await loadGroups();
     const gmap = st.type==='group' ? await copyGroupTree(st.kind, st.groups, destId) : {};
@@ -6051,7 +6051,7 @@ async function savePreview(){
         await insertRows('saved_points', fpRows);
       }
       const rows = targets.map(r=>({
-        user_id: currentUser.id, name: r.name, group_id: groupFor(r), visibility:'private', is_public:false, source_route_id: r.id,
+        id: crypto.randomUUID(), user_id: currentUser.id, name: r.name, group_id: groupFor(r), visibility:'private', is_public:false, source_route_id: r.id,
         points: (r.points||[]).map(d=>{
           const c = { lat:d.lat, lng:d.lng, name:d.name||'', memo:d.memo||'' };
           if(d.color) c.color = d.color;
@@ -6069,10 +6069,19 @@ async function savePreview(){
       }));
       await insertRows('routes', rows);
       added = rows.length;
+      // コピーしたルートを地図に出したままにする（フォルダごとの時は最初のルート）
+      if(rows.length) showRouteId = rows[0].id;
+      else if(st.items.length){
+        // 全部コピー済みだった時は、前にコピーした最初のルートを出す
+        const r1 = await supabaseFetch(`/rest/v1/routes?user_id=eq.${currentUser.id}&source_route_id=eq.${st.items[0].id}&select=id&limit=1`);
+        const got = r1.ok ? await r1.json() : [];
+        if(got.length) showRouteId = got[0].id;
+      }
     }
     await loadSavedPoints();
     alert(t('preview_result',{n:added, m:skipped}) + (overwritten ? ' ' + t('dup_result',{k:overwritten}) : ''));
     cancelPreview();
+    if(showRouteId) await loadFromSupabase(showRouteId, true);
   }catch(e){
     if(String(e.message).indexOf('POINT_LIMIT') !== -1) alert(t('quota_point_limit_bulk'));
     else alert(t('alert_save_fail',{err: e.message}));
@@ -6081,7 +6090,7 @@ async function savePreview(){
   }
 }
 
-async function loadFromSupabase(id){
+async function loadFromSupabase(id, silent){
   try {
     const res = await supabaseFetch(`/rest/v1/routes?id=eq.${id}`);
     const data = await res.json();
@@ -6095,7 +6104,7 @@ async function loadFromSupabase(id){
     updatePolyline(); renderList();
     if(points.length) map.fitBounds(points.map(p=>[p.lat,p.lng]),{padding:[40,40]});
     closeRouteList();
-    alert(t('alert_load_success',{name:route.name}));
+    if(!silent) alert(t('alert_load_success',{name:route.name}));
   } catch(e){
     alert(t('alert_load_route_fail',{err:e.message}));
   }
