@@ -2977,6 +2977,11 @@ function drawPlayAt(dist){
   // （距離の足し引きのわずかな誤差で、最後の区間が「途中」と判定され、最後のピンが出なかった）
   if(dist >= playTotal - 0.5) reached = Math.max(reached, playSegs[playSegs.length-1].endIndex);
   playReached = reached;
+  // 写真は「さしかかった」時に出す：到着の約1秒前（再生速度に合わせた距離。最低30m）
+  const lead = Math.max(30, PLAY_BASE_SPEED * playSpeed * 1.0);
+  let acc = 0, appr = 0;
+  for(const sg of playSegs){ acc += sg.len; if(acc <= dist + lead) appr = sg.endIndex; else break; }
+  playApproach = Math.max(appr, reached);
   playMarker.setLatLng(pos);
   playMarker.setIcon(L.divIcon({html:playIconHTML(heading + mapBearingDeg()), iconSize:[44,44], iconAnchor:[22,22], className:''}));
   // 通り過ぎたポイントのピンを出す
@@ -5112,7 +5117,8 @@ function updateMlToolbar(){
 // ・マップボタン：出さない／ルート上だけ／全部　・到達したら出す（再生・録画・ナビ）
 // ・固定ポイントごとに「常に出す」（マイリストの⋯）
 // ・保存されている 400px のサムネを画面で縮めて出すだけ（新しいファイルは作らない）
-let photoLayer = null, photoSig = '', playReached = -1;
+let photoLayer = null, photoSig = '', playReached = -1, playApproach = -1;
+const photoMarkers = new Map();   // 地図に出ている写真（キー → マーカー）。出ているものは作り直さない
 let previewPhotoMap = {};   // 他人のルートを見る時：固定ポイントID → 写真
 let previewVisibleFixed = new Set();   // 他人のルートの中で、自分が見てよい固定ポイントのID（非公開のものは入らない）
 let previewFixedRows = {};             // その固定ポイントの中身（写真など）
@@ -5148,7 +5154,14 @@ function renderPhotoBadges(force){
   if(typeof map === 'undefined' || !map || typeof L === 'undefined') return;
   const mode = photoMapMode(), reachOn = photoOnReach();
   const playing = !!playLayer, naving = !!navActive;
-  const reachIdx = playing ? playReached : (naving ? navIndex - 1 : -1);
+  let reachIdx = -1;
+  if(playing) reachIdx = playApproach;
+  else if(naving){
+    reachIdx = navIndex - 1;
+    // ナビ：次の目的地まで150m以内に近づいたら、その写真も出す
+    const nx = points[navIndex];
+    if(nx && gpsMarker && map.distance(gpsMarker.getLatLng(), [nx.lat, nx.lng]) < 150) reachIdx = navIndex;
+  }
   const list = [];
   // ① 今のルートのポイント
   points.forEach((p, idx)=>{
@@ -5180,8 +5193,13 @@ function renderPhotoBadges(force){
   if(!force && sig === photoSig) return;
   photoSig = sig;
   if(!photoLayer) photoLayer = L.layerGroup().addTo(map);
-  photoLayer.clearLayers();
-  list.forEach(x=> photoLayer.addLayer(photoBadgeMarker(x.ll, x.ph, x.lift)));
+  const want = new Map(list.map(x=>[x.key+'@'+x.ll.join(','), x]));
+  for(const [k, m] of photoMarkers){ if(!want.has(k)){ photoLayer.removeLayer(m); photoMarkers.delete(k); } }
+  for(const [k, x] of want){
+    if(photoMarkers.has(k)) continue;   // もう出ている写真は触らない（出直しのアニメーションを起こさない）
+    const m = photoBadgeMarker(x.ll, x.ph, x.lift);
+    photoLayer.addLayer(m); photoMarkers.set(k, m);
+  }
 }
 // 状態の変化（ルートの読み込み・再生・ナビの進み具合など）に合わせて、軽く見張って更新する
 setInterval(()=>renderPhotoBadges(false), 400);
