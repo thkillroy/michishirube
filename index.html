@@ -3848,13 +3848,16 @@ function pointToSnapshot(p){
 // 保存用データ → ルートポイント（中身は保存時のまま。固定ポイント本体が残っていれば紐付けだけ復活）
 function snapshotToPoint(d, i){
   const p = {id:Date.now()+i, lat:d.lat, lng:d.lng, name:d.name||'', memo:d.memo||'', marker:null};
-  if(d.icon) p.icon = d.icon;
   if(d.color) p.color = d.color;
   if(d.segMode) p.segMode = d.segMode;
   if(d.segColor) p.segColor = d.segColor;
   if(d.segStyle) p.segStyle = d.segStyle;
   if(d.segPath) p.segPath = d.segPath;
   if(d.fixedPointId && savedPoints.some(sp=>sp.id===d.fixedPointId)) p.fixedPointId = d.fixedPointId;
+  // アイコン（⭐・🅿など）は、固定ポイントと結びついている時だけ付ける。
+  // 結びついていた固定ポイントが削除された時は、普通のルートピンとして表示する
+  // （以前は削除後もアイコンだけ残り、固定ポイントに見えるのに固定ポイントではない、という状態になっていた）
+  if(d.icon && p.fixedPointId) p.icon = d.icon;
   return p;
 }
 function saveRoute(){
