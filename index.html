@@ -4027,18 +4027,21 @@ async function convertRoutePointToFixed(routePointId, name, memo, icon, fpMeta){
   const p = points[idx];
   try{
     const newId = crypto.randomUUID();
+    // 写真を選んでいたらアップロードして一緒に保存（以前はこの処理が無く、写真が付かなかった）
+    const photoFields = await buildPhotoFields(newId);
+    if(photoFields.__cancel) return false;
     const res = await supabaseFetch('/rest/v1/saved_points', {
       method: 'POST',
       prefer: 'return=minimal',
       body: JSON.stringify({
         id: newId,
         user_id: currentUser.id,
-        name, memo, icon, ...fpMeta,
+        name, memo, icon, ...fpMeta, ...photoFields,
         lat: p.lat, lng: p.lng
       })
     });
     if(res.ok){
-      const newSavedPoint = { id:newId, user_id:currentUser.id, name, memo, icon, ...fpMeta, lat:p.lat, lng:p.lng };
+      const newSavedPoint = { id:newId, user_id:currentUser.id, name, memo, icon, ...fpMeta, ...photoFields, lat:p.lat, lng:p.lng };
       addSavedPointMarker(newSavedPoint);
       if(p.marker) map.removeLayer(p.marker);
       points.splice(idx, 1);
