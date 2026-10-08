@@ -1991,7 +1991,7 @@ let compassMode = 'north';      // 'north'＝北が上 / 'heading'＝スマホ�
 let compassEl = null, compassSvg = null;
 // 向きの決め方：走っている時（秒速2m以上）はGPSの進行方向、止まっている時はスマホの向き
 // 回し方：画面の書き換えごと（1秒に約60回）に、目標の角度へ少しずつ近づける（カクカクしない）
-let headingTarget = null, headingShown = null, headingRaf = 0, headingLastT = 0, headingSource = '';
+let headingTarget = null, headingShown = null, headingSource = '';
 let sensorSmooth = null, gpsCourseAt = 0;
 let headingDebug = { raw:null, wo:null, so:null };
 const GPS_COURSE_MIN_SPEED = 2;      // 秒速2m（約7km/h）以上で進行方向を使う
@@ -2011,7 +2011,8 @@ function screenAngle(){
 // 方位センサーの値 → 画面の上が向いている方角（北から時計回りの度）
 function readHeading(e){
   let h = null;
-  if(typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;          // iPhone
+  let ios = false;
+  if(typeof e.webkitCompassHeading === 'number'){ h = e.webkitCompassHeading; ios = true; }   // iPhone
   else if(e.absolute === true || e.type === 'deviceorientationabsolute'){
     if(typeof e.alpha === 'number') h = 360 - e.alpha;                                 // Android
   }
@@ -2019,6 +2020,8 @@ function readHeading(e){
   headingDebug.raw = h;
   headingDebug.wo = (typeof window.orientation === 'number') ? window.orientation : '-';
   headingDebug.so = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : '-';
+  // iPhoneの値は、最初から画面の向きを考えた値なので、そのまま使う（v123の実機確認で判明）
+  if(ios) return (h + 360) % 360;
   return (h + screenAngle() + 360) % 360;
 }
 // 【確認用・一時的】回転モード中だけ、センサーの値と画面の向きを表示する
@@ -2034,21 +2037,66 @@ function setHeadingTarget(h, src){
   headingSource = src;
   if(headingTarget !== null && Math.abs(angDiff(h, headingTarget)) < HEADING_DEAD_ZONE) return;
   headingTarget = h;
-  if(!headingRaf){ headingLastT = 0; headingRaf = requestAnimationFrame(headingFrame); }
+  requestMotion();
 }
-function headingFrame(now){
-  headingRaf = 0;
-  if(compassMode !== 'heading' || headingTarget === null) return;
-  const dt = headingLastT ? Math.min(100, now - headingLastT) : 16;
-  headingLastT = now;
+// 地図の回転を1コマ分進める。まだ目標に着いていなければ true を返す
+function headingStep(dt){
+  if(compassMode !== 'heading' || headingTarget === null) return false;
   if(headingShown === null) headingShown = (360 - mapBearingDeg()) % 360;
   const d = angDiff(headingTarget, headingShown);
-  if(Math.abs(d) < 0.1){ headingLastT = 0; return; }   // 目標に着いたら止まる
+  if(Math.abs(d) < 0.1) return false;                  // 目標に着いたら止まる
   const tau = headingSource === 'gps' ? 450 : 220;     // GPSは更新が1秒ごとなので、ゆっくり追う
   headingShown = (headingShown + d * (1 - Math.exp(-dt / tau)) + 360) % 360;
   map.setBearing(-headingShown);
   updateCompassNeedle();
-  headingRaf = requestAnimationFrame(headingFrame);
+  return true;
+}
+
+// ===== 動きをなめらかにするループ（1秒に約60回） =====
+// 1コマごとに：①現在地の点を少し進める → ②地図を少し回す → ③追従中なら現在地を見えている部分の真ん中に合わせる
+// ②と③を同じコマで行うので、回転しても現在地が中心からずれない
+let motionRaf = 0, motionLastT = 0;
+let gpsAnim = null;                // { from, to, t0, dur }：GPSの前の位置→新しい位置へ動かす
+let moveEndPending = false, lastMoveEndAt = 0;
+function requestMotion(){
+  if(!motionRaf){ motionLastT = 0; motionRaf = requestAnimationFrame(motionFrame); }
+}
+function motionFrame(now){
+  motionRaf = 0;
+  const dt = motionLastT ? Math.min(100, now - motionLastT) : 16;
+  motionLastT = now;
+  let busy = false;
+  if(gpsAnim && gpsMarker){
+    const k = Math.min(1, (now - gpsAnim.t0) / gpsAnim.dur);
+    const ll = L.latLng(gpsAnim.from.lat + (gpsAnim.to.lat - gpsAnim.from.lat) * k,
+                        gpsAnim.from.lng + (gpsAnim.to.lng - gpsAnim.from.lng) * k);
+    gpsMarker.setLatLng(ll);
+    if(gpsCircle) gpsCircle.setLatLng(ll);
+    if(k >= 1) gpsAnim = null; else busy = true;
+  }
+  if(headingStep(dt)) busy = true;
+  keepGpsCentered(now);
+  if(busy) motionRaf = requestAnimationFrame(motionFrame);
+  else {
+    motionLastT = 0;
+    if(moveEndPending){ moveEndPending = false; lastMoveEndAt = now; map.fire('moveend'); }   // 止まったら地図の読み込みを確定
+  }
+}
+// 追従中は、現在地を「見えている部分の真ん中」にぴったり合わせる（アニメーションなしで1コマずつ）
+function keepGpsCentered(now){
+  if(!followMode || !gpsMarker) return;
+  // 指で拡大縮小している時・ボタンで移動中の時は邪魔しない
+  if(map._animatingZoom || (map.touchZoom && map.touchZoom._zooming) || (map._panAnim && map._panAnim._inProgress)) return;
+  const off = panelOffset();
+  const size = map.getSize();
+  const pt = map.latLngToContainerPoint(gpsMarker.getLatLng());
+  const dx = pt.x - (size.x / 2 + off.x), dy = pt.y - (size.y / 2 + off.y);
+  if(Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+  map._rawPanBy(L.point(dx, dy));
+  map.fire('move');
+  moveEndPending = true;
+  // 地図の画像の読み込みは0.3秒に1回まで
+  if(now - lastMoveEndAt > 300){ moveEndPending = false; lastMoveEndAt = now; map.fire('moveend'); }
 }
 function onDeviceHeading(e){
   if(compassMode !== 'heading') return;
@@ -2088,9 +2136,9 @@ async function setCompassMode(mode){
   } else {
     compassMode = 'north';
     window.removeEventListener(ORIENT_EVENT, onDeviceHeadingWrap, true);
-    if(headingRaf){ cancelAnimationFrame(headingRaf); headingRaf = 0; }
     headingTarget = null; headingShown = null;
     if(canRotateMap) map.setBearing(0);
+    requestMotion();   // 北向きに戻した後、現在地を真ん中に合わせ直す
   }
   updateCompassNeedle();
   updateCompassDebug();
@@ -2126,7 +2174,7 @@ if(zoomCtrlEl){
 
 let points=[], polylines=[], addMode=false;
 let navActive=false, navIndex=0;
-let followMode=false, gpsMarker=null, gpsCircle=null, gpsInitialized=false;
+let followMode=false, gpsMarker=null, gpsCircle=null, gpsInitialized=false, lastFixAt=0;
 let gpsIconData = null; // 自分で貼った現在位置アイコン（この端末×アカウントごと。ログアウト中は標準の青い点）
 
 // 端末の保存場所の名前：アカウントごとに分ける
@@ -2191,8 +2239,18 @@ function onGPS(pos){
   if(!gpsMarker){
     gpsMarker=createGpsMarker(lat,lng);
     gpsCircle=L.circle([lat,lng],{radius:accuracy,color:'#2ea8ff',fillColor:'#2ea8ff',fillOpacity:0.08,weight:1}).addTo(map);
-  }else{ gpsMarker.setLatLng([lat,lng]); gpsCircle.setLatLng([lat,lng]).setRadius(accuracy); }
-  if(followMode)panToVisible([lat,lng]);
+  }else{
+    // 前の位置から新しい位置へ、次の更新までの時間をかけて少しずつ動かす
+    gpsCircle.setRadius(accuracy);
+    const from = gpsMarker.getLatLng(), to = L.latLng(lat, lng), now = performance.now();
+    if(map.distance(from, to) > 500 || now - lastFixAt > 5000){
+      gpsAnim = null; gpsMarker.setLatLng(to); gpsCircle.setLatLng(to);   // 大きく飛んだ時はすぐ移す
+    }else{
+      gpsAnim = { from, to, t0: now, dur: Math.max(200, Math.min(1500, now - lastFixAt)) };
+    }
+  }
+  lastFixAt = performance.now();
+  requestMotion();   // 追従中の中心合わせもループで行う
   if(navActive){
     checkProgress(lat,lng);
     // ナビバーの距離をリアルタイム更新
