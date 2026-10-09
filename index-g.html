@@ -179,13 +179,21 @@
       const br = o.paddingBottomRight ? toPt(o.paddingBottomRight) : o.padding ? toPt(o.padding) : new Point(0, 0);
       this._g.fitBounds(bb._g(), { top: tl.y, left: tl.x, bottom: br.y, right: br.x });
       const maxZ = (o.maxZoom != null) ? o.maxZoom : 18;
-      google.maps.event.addListenerOnce(this._g, 'idle', () => { if(this._g.getZoom() > maxZ) this._g.setZoom(maxZ); });
+      // Googleの fitBounds は向きを0（北）に戻してから動くので、回転していた時は元の向きに戻す
+      const keepH = this._h;
+      google.maps.event.addListenerOnce(this._g, 'idle', () => {
+        const cam = {};
+        if(this._g.getZoom() > maxZ) cam.zoom = maxZ;
+        if(keepH) cam.heading = keepH;
+        if(cam.zoom !== undefined || cam.heading !== undefined) this._g.moveCamera(cam);
+      });
       return this;
     }
     // 回転：Leaflet の回転部品と同じ「bearing」（＝ 地図の向きのマイナス）で受け取る
+    // 毎コマ呼ばれるので、Googleの公式の例と同じく moveCamera（カメラを直接動かす命令）で回す
     setBearing(b){
       this._h = ((-b % 360) + 360) % 360;
-      if(this._g) this._g.setHeading(this._h);
+      if(this._g) this._g.moveCamera({ heading: this._h });
       return this;
     }
     getBearing(){ return (360 - this._heading()) % 360; }
@@ -4478,7 +4486,8 @@ function renderSearchResults(){
   const el = document.getElementById('search-results');
   searchMarkers.forEach(m=>map.removeLayer(m));
   searchMarkers = searchResults.map((r,i)=>{
-    const m = L.marker([r.lat,r.lng],{icon:makeSearchIcon(r.kind, r.icon), zIndexOffset:500}).addTo(map);
+    // 重なり順：自分の固定ポイント・ルート上のポイント（緑・オレンジ）を、地図の場所（ピンク）より手前に出す
+    const m = L.marker([r.lat,r.lng],{icon:makeSearchIcon(r.kind, r.icon), zIndexOffset: r.kind==='place' ? 500 : 700}).addTo(map);
     m.bindTooltip(r.name,{direction:'top',offset:[0,-34]});
     m.on('click', e=>{ L.DomEvent.stopPropagation(e); showSearchPopup(e.latlng, i); });
     return m;

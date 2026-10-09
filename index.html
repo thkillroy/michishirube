@@ -3952,7 +3952,8 @@ function renderSearchResults(){
   const el = document.getElementById('search-results');
   searchMarkers.forEach(m=>map.removeLayer(m));
   searchMarkers = searchResults.map((r,i)=>{
-    const m = L.marker([r.lat,r.lng],{icon:makeSearchIcon(r.kind, r.icon), zIndexOffset:500}).addTo(map);
+    // 重なり順：自分の固定ポイント・ルート上のポイント（緑・オレンジ）を、地図の場所（ピンク）より手前に出す
+    const m = L.marker([r.lat,r.lng],{icon:makeSearchIcon(r.kind, r.icon), zIndexOffset: r.kind==='place' ? 500 : 700}).addTo(map);
     m.bindTooltip(r.name,{direction:'top',offset:[0,-34]});
     m.on('click', e=>{ L.DomEvent.stopPropagation(e); showSearchPopup(e.latlng, i); });
     return m;
