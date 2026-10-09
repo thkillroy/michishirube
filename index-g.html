@@ -6,7 +6,9 @@
 <title>MICHI-SHIRUBE（Googleマップ本体の試作版）</title>
 <style>
   html, body { margin:0; height:100%; background:#08090d; color:#e9e9ee; font-family:"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif; overflow:hidden; }
-  #map { position:fixed; inset:0; }
+  /* Googleマップは地図の枠に position:relative を自動で付けるので、外側の枠で画面いっぱいにする */
+  #map-wrap { position:fixed; inset:0; }
+  #map { width:100%; height:100%; }
   .chip { position:fixed; z-index:10; background:rgba(0,0,0,0.75); border-radius:12px; padding:5px 10px; font-size:12px; }
   #gps { top:calc(8px + env(safe-area-inset-top,0px)); left:calc(8px + env(safe-area-inset-left,0px)); color:#9a9aa6; }
   #gps.good { color:#4ad66d; } #gps.bad { color:#ff6b6b; }
@@ -27,7 +29,7 @@
 </style>
 </head>
 <body>
-<div id="map"></div>
+<div id="map-wrap"><div id="map"></div></div>
 <div id="gps" class="chip">📡 GPS待機中</div>
 <div id="dbg" class="chip"></div>
 <button id="btn-compass" class="rbtn" onclick="toggleCompass()" title="北が上／進行方向が上"><span id="compass-needle">🧭</span></button>
@@ -284,8 +286,8 @@ function iconHTML(icon, size){
 function esc(s){ return String(s || '').replace(/[&<>"']/g, ch=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch])); }
 function addFixedPoint(p){
   const el = document.createElement('div'); el.className = 'fp'; el.innerHTML = iconHTML(p.icon, 28);
-  const mk = new AdvMarker({ map, position: { lat: p.lat, lng: p.lng }, content: el, title: p.name || '' });
-  mk.addListener('click', ()=>{
+  const mk = new AdvMarker({ map, position: { lat: p.lat, lng: p.lng }, content: el, title: p.name || '', gmpClickable: true });
+  mk.addEventListener('gmp-click', ()=>{
     infoWin.setContent(`<div class="iw"><b>${esc(p.name)}</b>${esc(p.memo)}${p.photo_thumb_url ? `<img src="${esc(p.photo_thumb_url)}">` : ''}</div>`);
     infoWin.open({ map, anchor: mk });
   });
@@ -310,8 +312,8 @@ function showRoute(id){
     const el = document.createElement('div'); el.className = 'rp';
     el.style.background = i === 0 ? '#2ecc71' : (i === pts.length - 1 ? '#e74c3c' : '#ff9f1c');
     el.textContent = String(i + 1);
-    const mk = new AdvMarker({ map, position: { lat: d.lat, lng: d.lng }, content: el, title: d.name || '' });
-    mk.addListener('click', ()=>{
+    const mk = new AdvMarker({ map, position: { lat: d.lat, lng: d.lng }, content: el, title: d.name || '', gmpClickable: true });
+    mk.addEventListener('gmp-click', ()=>{
       infoWin.setContent(`<div class="iw"><b>${i + 1}. ${esc(d.name)}</b>${esc(d.memo)}</div>`);
       infoWin.open({ map, anchor: mk });
     });
