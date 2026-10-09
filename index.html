@@ -1858,16 +1858,36 @@ function useMapTilerFallback(){
   if(usingGoogleMap) return;
   L.tileLayer(`https://api.maptiler.com/maps/streets-v4/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`, {
     attribution:'© <a href="https://www.maptiler.com/">MapTiler</a> © OpenStreetMap',
-    maxZoom:19, tileSize:256
+    maxZoom:19, tileSize:256, updateWhenIdle:false   // 回している間も地図を読み込む
   }).addTo(map);
+}
+
+// ===== 地図を回しても角が灰色にならないようにする =====
+// ・Googleマップの画像は、画面の外に隠したGoogleマップから写している（GoogleMutant）
+// ・隠した地図は標準では画面と同じ四角なので、回すと画面の角に地図がない部分が出る
+// ・隠した地図を「画面の対角線の長さの正方形」に広げ、中心を画面の中心に合わせる
+function fitMutantForRotation(){
+  if(!googleLayer || !googleLayer._mutantContainer) return;
+  const s = map.getSize();
+  const d = Math.ceil(Math.sqrt(s.x * s.x + s.y * s.y)) + 2;
+  const st = googleLayer._mutantContainer.style;
+  st.width = d + 'px'; st.height = d + 'px';
+  st.left = Math.round((s.x - d) / 2) + 'px';
+  st.top = Math.round((s.y - d) / 2) + 'px';
+}
+map.on('resize', fitMutantForRotation);   // 縦横の切り替え・Foldの開閉の時に合わせ直す
+// Googleマップの設定：回している間も地図を読み込む（スマホの標準は「止まってから読み込む」）
+function googleMutantOptions(){
+  const opts = { type: currentMapType, updateWhenIdle: false };
+  const st = buildMapStyles();
+  if(st) opts.styles = st;
+  return opts;
 }
 
 function initGoogleLayer(){
   try{
-    const opts = { type: currentMapType };
-    const st0 = buildMapStyles();
-    if(st0) opts.styles = st0;
-    googleLayer = L.gridLayer.googleMutant(opts).addTo(map);
+    googleLayer = L.gridLayer.googleMutant(googleMutantOptions()).addTo(map);
+    fitMutantForRotation();
     usingGoogleMap = true;
   }catch(e){
     console.warn('Googleマップ読み込み失敗、MapTilerにフォールバック', e);
@@ -1932,10 +1952,8 @@ function buildMapStyles(){
 function rebuildGoogleLayer(){
   if(!usingGoogleMap) return;
   if(googleLayer) map.removeLayer(googleLayer);
-  const opts = { type: currentMapType };
-  const st = buildMapStyles();
-  if(st) opts.styles = st;
-  googleLayer = L.gridLayer.googleMutant(opts).addTo(map);
+  googleLayer = L.gridLayer.googleMutant(googleMutantOptions()).addTo(map);
+  fitMutantForRotation();
   if(trafficLayerOn) googleLayer.addGoogleLayer('TrafficLayer');
   if(transitLayerOn) googleLayer.addGoogleLayer('TransitLayer');
   if(bicyclingLayerOn) googleLayer.addGoogleLayer('BicyclingLayer');
