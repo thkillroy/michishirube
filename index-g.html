@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>MICHI-SHIRUBE（Googleマップ本体の試作版）</title>
+<style>
+  html, body { margin:0; height:100%; background:#08090d; color:#e9e9ee; font-family:"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif; overflow:hidden; }
+  #map { position:fixed; inset:0; }
+  .chip { position:fixed; z-index:10; background:rgba(0,0,0,0.75); border-radius:12px; padding:5px 10px; font-size:12px; }
+  #gps { top:calc(8px + env(safe-area-inset-top,0px)); left:calc(8px + env(safe-area-inset-left,0px)); color:#9a9aa6; }
+  #gps.good { color:#4ad66d; } #gps.bad { color:#ff6b6b; }
+  #dbg { top:calc(40px + env(safe-area-inset-top,0px)); left:calc(8px + env(safe-area-inset-left,0px)); color:#ffd27a; font-family:monospace; font-size:10px; display:none; }
+  #bar { position:fixed; z-index:10; left:8px; right:8px; bottom:calc(8px + env(safe-area-inset-bottom,0px)); display:flex; gap:8px; align-items:center; }
+  #bar select, #bar a { flex:1; min-width:0; background:#12141a; color:#e9e9ee; border:1px solid #343b48; border-radius:10px; padding:10px; font-size:13px; text-decoration:none; text-align:center; }
+  .rbtn { position:fixed; z-index:10; width:52px; height:52px; border-radius:50%; border:2px solid #343b48; background:#12141a; color:#e9e9ee; font-size:20px; display:flex; align-items:center; justify-content:center; cursor:pointer; right:calc(12px + env(safe-area-inset-right,0px)); }
+  .rbtn.on { background:#ff9f1c; border-color:#ff9f1c; color:#000; }
+  #btn-compass { top:calc(60px + env(safe-area-inset-top,0px)); }
+  #btn-follow { bottom:calc(70px + env(safe-area-inset-bottom,0px)); }
+  #compass-needle { transition:none; display:inline-block; }
+  .gpsdot { width:18px; height:18px; border-radius:50%; background:#2ea8ff; border:3px solid #fff; box-shadow:0 0 6px rgba(0,0,0,0.5); transform:translateY(50%); }
+  .fp { line-height:1; filter:drop-shadow(0 0 3px #45c7ff) drop-shadow(0 1px 2px rgba(0,0,0,0.7)); cursor:pointer; }
+  .rp { width:24px; height:24px; border-radius:50%; color:#000; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,0.6); transform:translateY(50%); }
+  .iw { color:#111; font-size:13px; max-width:220px; }
+  .iw b { display:block; margin-bottom:4px; }
+  .iw img { width:100%; border-radius:6px; margin-top:6px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="gps" class="chip">📡 GPS待機中</div>
+<div id="dbg" class="chip"></div>
+<button id="btn-compass" class="rbtn" onclick="toggleCompass()" title="北が上／進行方向が上"><span id="compass-needle">🧭</span></button>
+<button id="btn-follow" class="rbtn" onclick="toggleFollow()" title="現在地を追いかける">◎</button>
+<div id="bar">
+  <select id="route-select" onchange="showRoute(this.value)"><option value="">ルートを選ぶ（ログイン時）</option></select>
+  <a href="./index.html">元の版に戻る</a>
+</div>
+
+<script>
+// =====================================================================
+// MICHI-SHIRUBE：Googleマップ本体を土台にした試作版（index-g.html）
+// ・今の版（index.html）は Leaflet＋回転の部品＋隠したGoogleマップ。この版はGoogleマップを直接使う
+// ・この試作でできること：地図／現在地（なめらかに動く）／回転（文字はまっすぐ）／固定ポイント／保存したルートの表示
+// ・ログインは今の版と共有する（同じ場所に置くので、今の版でログインしていればそのまま使える）
+// =====================================================================
+const GOOGLE_KEY = 'AIzaSyAwuYMBSE85I1VMnG34H-E8JzY114YRSYE';
+// マップID：新しいマーカー（AdvancedMarkerElement）に必要。今はGoogleが用意したテスト用のID。
+// 本番では Google Cloud で自分のマップID（JavaScript／ベクター／回転あり）を作って置き換える
+const MAP_ID = 'DEMO_MAP_ID';
+const SUPABASE_URL = 'https://zryfljpzllnkukbitfpl.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpyeWZsanB6bGxua3VrYml0ZnBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk4MTI4NDcsImV4cCI6MjEwNTM4ODg0N30.RySxqFIiVBvwuwujMjODTkrxD3AJWD26yhqJsEojhMI';
+
+let map, AdvMarker, infoWin;
+let gpsMarker = null, gpsCircle = null, followMode = false;
+let compassMode = 'north';   // 'north'＝北が上／'heading'＝進行方向が上
+
+// ===== Googleマップを読み込む =====
+(function(){
+  const s = document.createElement('script');
+  s.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_KEY}&v=weekly&loading=async&language=ja&callback=initMap`;
+  s.async = true;
+  document.head.appendChild(s);
+})();
+
+async function initMap(){
+  const { Map, RenderingType, InfoWindow } = await google.maps.importLibrary('maps');
+  ({ AdvancedMarkerElement: AdvMarker } = await google.maps.importLibrary('marker'));
+  map = new Map(document.getElementById('map'), {
+    center: { lat: 36.3, lng: 139.4 }, zoom: 15, mapId: MAP_ID,
+    renderingType: RenderingType.VECTOR,   // ベクター地図：回転しても文字がまっすぐ
+    heading: 0, tilt: 0,
+    disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy', clickableIcons: false
+  });
+  infoWin = new InfoWindow();
+  map.addListener('dragstart', ()=>setFollow(false));
+  startGPS();
+  loadMyData();
+}
+
+// ===== 現在地 =====
+let lastFixAt = 0, gpsAnim = null, shownPos = null, firstFix = true;
+function startGPS(){
+  if(!navigator.geolocation){ gpsBad('📡 この端末では位置が取れません'); return; }
+  navigator.geolocation.watchPosition(onGPS, err=>{
+    gpsBad(err.code === 1 ? '📡 位置情報が未許可' : err.code === 3 ? '📡 GPS時間切れ' : '📡 位置が取れません');
+  }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 });
+}
+function gpsBad(txt){ const b = document.getElementById('gps'); b.textContent = txt; b.className = 'chip bad'; }
+function onGPS(pos){
+  const c = pos.coords, to = { lat: c.latitude, lng: c.longitude };
+  const b = document.getElementById('gps');
+  b.textContent = `📡 精度 ±${Math.round(c.accuracy)}m`; b.className = 'chip ' + (c.accuracy < 30 ? 'good' : '');
+  const now = performance.now();
+  if(!gpsMarker){
+    const dot = document.createElement('div'); dot.className = 'gpsdot';
+    gpsMarker = new AdvMarker({ map, position: to, content: dot, zIndex: 9999 });
+    gpsCircle = new google.maps.Circle({ map, center: to, radius: c.accuracy, strokeOpacity: 0, fillColor: '#2ea8ff', fillOpacity: 0.12, clickable: false });
+    shownPos = to;
+  } else {
+    gpsCircle.setRadius(c.accuracy);
+    // 前の位置から新しい位置へ、次の更新までの時間をかけて少しずつ動かす（大きく飛んだ時はすぐ移す）
+    if(distM(shownPos, to) > 500 || now - lastFixAt > 5000){ gpsAnim = null; setShownPos(to); }
+    else gpsAnim = { from: { ...shownPos }, to, t0: now, dur: Math.max(200, Math.min(1500, now - lastFixAt)) };
+  }
+  lastFixAt = now;
+  if(firstFix){ firstFix = false; map.moveCamera({ center: to, zoom: 16 }); }
+  onGpsCourse(c);
+  requestMotion();
+}
+function setShownPos(p){ shownPos = p; gpsMarker.position = p; gpsCircle.setCenter(p); }
+function distM(a, b){
+  const R = 6371000, r = Math.PI/180;
+  const dLat = (b.lat-a.lat)*r, dLng = (b.lng-a.lng)*r;
+  const x = Math.sin(dLat/2)**2 + Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(x));
+}
+
+// ===== 追いかける（◎） =====
+function setFollow(on){
+  followMode = on;
+  document.getElementById('btn-follow').classList.toggle('on', on);
+  if(on) requestMotion();
+}
+function toggleFollow(){ setFollow(!followMode); }
+
+// ===== 回転（v124 と同じ考え方） =====
+// 走っている時（秒速2m以上）はGPSの進行方向、止まっている時はスマホの向き
+// iPhone の方位センサーの値は画面の向きを考えた値なので、そのまま使う。Android は画面の向きを足す
+let headingTarget = null, headingShown = 0, headingSource = '', sensorSmooth = null, gpsCourseAt = 0;
+let dbg = { raw: null, wo: null, so: null };
+const ORIENT_EVENT = ('ondeviceorientationabsolute' in window) ? 'deviceorientationabsolute' : 'deviceorientation';
+function angDiff(a, b){ return ((a - b + 540) % 360) - 180; }
+function screenAngle(){
+  if(typeof window.orientation === 'number') return (window.orientation + 360) % 360;
+  if(screen.orientation && typeof screen.orientation.angle === 'number') return screen.orientation.angle;
+  return 0;
+}
+function readHeading(e){
+  let h = null, ios = false;
+  if(typeof e.webkitCompassHeading === 'number'){ h = e.webkitCompassHeading; ios = true; }
+  else if((e.absolute === true || e.type === 'deviceorientationabsolute') && typeof e.alpha === 'number') h = 360 - e.alpha;
+  if(h === null) return null;
+  dbg.raw = h;
+  dbg.wo = (typeof window.orientation === 'number') ? window.orientation : '-';
+  dbg.so = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : '-';
+  return ios ? (h + 360) % 360 : (h + screenAngle() + 360) % 360;
+}
+function onDeviceHeading(e){
+  if(compassMode !== 'heading') return;
+  const h = readHeading(e); if(h === null) return;
+  sensorSmooth = (sensorSmooth === null) ? h : (sensorSmooth + angDiff(h, sensorSmooth) * 0.2 + 360) % 360;
+  if(performance.now() - gpsCourseAt < 3000){ showDbg(); return; }
+  setHeadingTarget(sensorSmooth, 'sensor');
+}
+function onGpsCourse(c){
+  if(compassMode !== 'heading') return;
+  if(typeof c.speed === 'number' && c.speed >= 2 && typeof c.heading === 'number' && !isNaN(c.heading)){
+    gpsCourseAt = performance.now();
+    setHeadingTarget(c.heading, 'gps');
+  }
+}
+function setHeadingTarget(h, src){
+  headingSource = src;
+  if(headingTarget !== null && Math.abs(angDiff(h, headingTarget)) < 1.5){ showDbg(); return; }
+  headingTarget = h;
+  showDbg();
+  requestMotion();
+}
+function showDbg(){
+  const el = document.getElementById('dbg');
+  if(compassMode !== 'heading'){ el.style.display = 'none'; return; }
+  const r = v => (typeof v === 'number') ? Math.round(v) : v;
+  el.style.display = 'block';
+  el.textContent = `${headingSource === 'gps' ? '🛰 GPS' : '📱'} ${r(headingTarget)}° | raw ${r(dbg.raw)}° | wo ${r(dbg.wo)} | so ${r(dbg.so)}`;
+}
+async function toggleCompass(){
+  const btn = document.getElementById('btn-compass');
+  if(compassMode === 'north'){
+    // iPhone は方位センサーの許可が必要（ボタンを押した時にしか聞けない）
+    if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+      try{ if(await DeviceOrientationEvent.requestPermission() !== 'granted'){ alert('方位センサーが許可されませんでした'); return; } }
+      catch(e){ alert('方位センサーを使えませんでした'); return; }
+    }
+    compassMode = 'heading'; headingTarget = null; sensorSmooth = null; gpsCourseAt = 0;
+    headingShown = map.getHeading() || 0;
+    window.addEventListener(ORIENT_EVENT, onDeviceHeading, true);
+    btn.classList.add('on');
+  } else {
+    compassMode = 'north';
+    window.removeEventListener(ORIENT_EVENT, onDeviceHeading, true);
+    headingTarget = 0; headingSource = '';
+    btn.classList.remove('on');
+    requestMotion();   // なめらかに北へ戻す
+  }
+  showDbg();
+}
+
+// ===== 動きをなめらかにするループ（1秒に約60回） =====
+// ①現在地の点を少し進める → ②地図を少し回す → ③追いかけ中なら現在地を真ん中に。②と③はカメラ1回の操作でまとめて行う
+let motionRaf = 0, motionLastT = 0;
+function requestMotion(){ if(!motionRaf && map){ motionLastT = 0; motionRaf = requestAnimationFrame(motionFrame); } }
+function motionFrame(now){
+  motionRaf = 0;
+  const dt = motionLastT ? Math.min(100, now - motionLastT) : 16;
+  motionLastT = now;
+  let busy = false;
+  if(gpsAnim && gpsMarker){
+    const k = Math.min(1, (now - gpsAnim.t0) / gpsAnim.dur);
+    setShownPos({ lat: gpsAnim.from.lat + (gpsAnim.to.lat - gpsAnim.from.lat) * k,
+                  lng: gpsAnim.from.lng + (gpsAnim.to.lng - gpsAnim.from.lng) * k });
+    if(k >= 1) gpsAnim = null; else busy = true;
+  }
+  const cam = {};
+  if(headingTarget !== null){
+    const d = angDiff(headingTarget, headingShown);
+    if(Math.abs(d) >= 0.1){
+      const tau = headingSource === 'gps' ? 450 : 220;
+      headingShown = (headingShown + d * (1 - Math.exp(-dt / tau)) + 360) % 360;
+      cam.heading = headingShown; busy = true;
+    } else if(compassMode === 'north'){ headingTarget = null; }
+  }
+  if(followMode && shownPos) cam.center = shownPos;
+  if(cam.heading !== undefined || cam.center) map.moveCamera(cam);
+  document.getElementById('compass-needle').style.transform = `rotate(${-(map.getHeading() || 0)}deg)`;
+  if(busy) motionRaf = requestAnimationFrame(motionFrame);
+  else motionLastT = 0;
+}
+
+// ===== ログイン情報（今の版と共有）とデータの読み込み =====
+let authToken = null, refreshToken = null, currentUser = null;
+function loadSession(){
+  try{
+    const s = JSON.parse(localStorage.getItem('navi_session') || 'null');
+    if(s && s.access_token){ authToken = s.access_token; refreshToken = s.refresh_token; currentUser = s.user; }
+  }catch(e){}
+}
+async function refreshAuth(){
+  if(!refreshToken) return false;
+  try{
+    const res = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST', headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken })
+    });
+    if(!res.ok) return false;
+    const data = await res.json(); if(!data.access_token) return false;
+    authToken = data.access_token; refreshToken = data.refresh_token;
+    currentUser = { ...currentUser, ...data.user, username: currentUser && currentUser.username };
+    // 今の版と同じ形で保存し直す（今の版もそのまま新しいログイン情報を使える）
+    localStorage.setItem('navi_session', JSON.stringify({ ...data, user: currentUser }));
+    return true;
+  }catch(e){ return false; }
+}
+async function sbGet(path, retried){
+  const res = await fetch(SUPABASE_URL + path, { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + (authToken || SUPABASE_KEY) } });
+  if((res.status === 401 || res.status === 403) && authToken && !retried && await refreshAuth()) return sbGet(path, true);
+  return res.ok ? res.json() : [];
+}
+let savedPoints = [], myRoutes = [];
+async function loadMyData(){
+  loadSession();
+  if(!currentUser) return;
+  savedPoints = await sbGet(`/rest/v1/saved_points?user_id=eq.${currentUser.id}`);
+  if(Array.isArray(savedPoints)) savedPoints.forEach(addFixedPoint);
+  myRoutes = await sbGet(`/rest/v1/routes?user_id=eq.${currentUser.id}&select=id,name,points&order=created_at.desc`);
+  const sel = document.getElementById('route-select');
+  sel.options[0].textContent = 'ルートを選ぶ';
+  (myRoutes || []).forEach(r=>{ const o = document.createElement('option'); o.value = r.id; o.textContent = r.name || '（名前なし）'; sel.appendChild(o); });
+}
+
+// ===== 固定ポイント（アイコンは今の版と同じ：絵文字、または星・旗の図形） =====
+function iconHTML(icon, size){
+  icon = icon || '⭐';
+  const m = /^(star|flag):(#[0-9a-fA-F]{6})$/.exec(icon);
+  if(m){
+    const c = m[2], edge = (c === '#1c1c1e') ? '#fff' : '#000';
+    const shape = m[1] === 'star'
+      ? `<path d="M12 1.8l3 6.6 7.2.8-5.4 4.9 1.5 7.1L12 17.6l-6.3 3.6 1.5-7.1L1.8 9.2 9 8.4z" fill="${c}" stroke="${edge}" stroke-opacity="0.55" stroke-width="1.2" stroke-linejoin="round"/>`
+      : `<rect x="4" y="1.5" width="2.2" height="21" rx="1" fill="#777"/><path d="M6.2 2.5h14l-3.4 5 3.4 5h-14z" fill="${c}" stroke="${edge}" stroke-opacity="0.55" stroke-width="1.1" stroke-linejoin="round"/>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24">${shape}</svg>`;
+  }
+  return `<span style="font-size:${size}px;line-height:1;">${icon}</span>`;
+}
+function esc(s){ return String(s || '').replace(/[&<>"']/g, ch=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch])); }
+function addFixedPoint(p){
+  const el = document.createElement('div'); el.className = 'fp'; el.innerHTML = iconHTML(p.icon, 28);
+  const mk = new AdvMarker({ map, position: { lat: p.lat, lng: p.lng }, content: el, title: p.name || '' });
+  mk.addListener('click', ()=>{
+    infoWin.setContent(`<div class="iw"><b>${esc(p.name)}</b>${esc(p.memo)}${p.photo_thumb_url ? `<img src="${esc(p.photo_thumb_url)}">` : ''}</div>`);
+    infoWin.open({ map, anchor: mk });
+  });
+}
+
+// ===== 保存したルートの表示 =====
+let routeObjs = [];
+function clearRoute(){ routeObjs.forEach(o=>{ if(o.setMap) o.setMap(null); else o.map = null; }); routeObjs = []; }
+function showRoute(id){
+  clearRoute();
+  const r = (myRoutes || []).find(x=>x.id === id); if(!r) return;
+  const pts = r.points || [];
+  const path = [];
+  pts.forEach((d, i)=>{
+    if(d.segPath && d.segPath.length > 1 && i < pts.length - 1) d.segPath.forEach(c=>path.push({ lat: c[0], lng: c[1] }));
+    else path.push({ lat: d.lat, lng: d.lng });
+  });
+  routeObjs.push(new google.maps.Polyline({ map, path, strokeColor: '#ff9f1c', strokeOpacity: 0.3, strokeWeight: 12, clickable: false }));
+  routeObjs.push(new google.maps.Polyline({ map, path, strokeColor: '#ff9f1c', strokeOpacity: 1, strokeWeight: 5, clickable: false }));
+  const bounds = new google.maps.LatLngBounds();
+  pts.forEach((d, i)=>{
+    const el = document.createElement('div'); el.className = 'rp';
+    el.style.background = i === 0 ? '#2ecc71' : (i === pts.length - 1 ? '#e74c3c' : '#ff9f1c');
+    el.textContent = String(i + 1);
+    const mk = new AdvMarker({ map, position: { lat: d.lat, lng: d.lng }, content: el, title: d.name || '' });
+    mk.addListener('click', ()=>{
+      infoWin.setContent(`<div class="iw"><b>${i + 1}. ${esc(d.name)}</b>${esc(d.memo)}</div>`);
+      infoWin.open({ map, anchor: mk });
+    });
+    routeObjs.push(mk);
+    bounds.extend({ lat: d.lat, lng: d.lng });
+  });
+  setFollow(false);
+  if(pts.length) map.fitBounds(bounds, 60);
+}
+</script>
+</body>
+</html>
