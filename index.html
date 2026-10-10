@@ -2046,8 +2046,15 @@ const GPS_COURSE_MIN_SPEED = 2;      // 秒速2m（約7km/h）以上で進行方
 const HEADING_DEAD_ZONE = 1.5;       // これより小さい揺れは無視（度）
 function mapBearingDeg(){ return (canRotateMap && map.getBearing) ? (map.getBearing() || 0) : 0; }
 function angDiff(a, b){ return ((a - b + 540) % 360) - 180; }
+// 針の角度は 0〜359° に丸めず、前の角度から「近い方への差」だけを足していく
+// （359°→1° の時に、CSSの動き（transition）が逆回りに358°回るのを防ぐ）
+let needleDeg = 0;
 function updateCompassNeedle(){
-  if(compassSvg) compassSvg.style.transform = `rotate(${mapBearingDeg()}deg)`;
+  if(compassSvg){
+    const d = (((mapBearingDeg() - needleDeg) % 360) + 540) % 360 - 180;
+    needleDeg += d;
+    compassSvg.style.transform = `rotate(${needleDeg}deg)`;
+  }
   if(compassEl) compassEl.classList.toggle('heading', compassMode === 'heading');
 }
 // 画面の向き（縦＝0、横＝90か270）。iPhoneで確実に取れる window.orientation を先に使う
@@ -7664,6 +7671,11 @@ function togglePanelListOnly(){ setPanelState(panelState==='list' ? 'full' : 'li
 })();
 
 window.addEventListener('resize', ()=>{ updatePanelLabels(); updatePanelMetrics(); });
+// パネルの大きさが変わったら、理由に関係なく（検索結果の表示・消去、一覧の増減、写真など）記録し直す
+if(window.ResizeObserver){
+  const panelRO = new ResizeObserver(()=>updatePanelMetrics());
+  ['bottom','panel-edge'].forEach(id=>{ const el = document.getElementById(id); if(el) panelRO.observe(el); });
+}
 
 window.addEventListener('orientationchange', ()=>{ setTimeout(()=>{ if(window.map) map.invalidateSize(); }, 300); });
 window.addEventListener('resize', ()=>{ if(window.map) map.invalidateSize(); });
