@@ -16,12 +16,12 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="manifest" href="./manifest.webmanifest">
+<link rel="manifest" href="./manifest-g.webmanifest">
 <meta name="theme-color" content="#08090d">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="MICHI-SHIRUBE">
+<meta name="apple-mobile-web-app-title" content="MICHI G">
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <link rel="icon" href="./favicon-32.png" sizes="32x32">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -401,7 +401,11 @@
     clearLayers(){ this._items.forEach(l => { l._group = null; l._offMap(); }); this._items.clear(); return this; }
     eachLayer(fn, ctx){ this._items.forEach(l => fn.call(ctx, l)); return this; }
     getLayers(){ return Array.from(this._items); }
-    addTo(m){ if(this._map === m) return this; this._map = m; m._layers.add(this); this._items.forEach(l => l.addTo(m)); return this; }
+    addTo(m){
+      if(m instanceof LayerGroup){ m.addLayer(this); return this; }   // まとまりの中にまとまりを入れる場合
+      if(this._map === m) return this;
+      this._map = m; m._layers.add(this); this._items.forEach(l => l.addTo(m)); return this;
+    }
     _offMap(){ if(this._map){ this._map._layers.delete(this); this._items.forEach(l => l._offMap()); this._map = null; } }
   }
   // GeoJSON の線（LineString / MultiLineString）だけを扱う
