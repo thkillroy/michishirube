@@ -28,17 +28,27 @@
 <!-- 地図はGoogleマップ本体。Leaflet と同じ書き方で動かすための代わりの部品 -->
 <script>
 // =====================================================================
-// Leaflet の代わり（Googleマップ本体の上で、Leaflet と同じ書き方で動かすための部品）
+// Leaflet の代わり（Leaflet と同じ書き方のまま、別の地図で動かすための部品）
 // ・アプリ本体のコードは Leaflet の書き方（L.marker / map.setView など）のまま
-// ・この部品が、それを Googleマップ（ベクター地図）の操作に置き換える
-// ・回転：Googleマップが自分で回すので、文字はまっすぐ、角も灰色にならない
+// ・地図は2種類
+//   google：Googleマップ本体（ベクター地図）。いつもはこちら
+//   free  ：MapLibre＋OpenFreeMap（無料・回数制限なし・商用OK）。Googleが使えない時の予備
+// ・どちらも、回しても文字がまっすぐ
+// ・Googleが使えない合図が来たら、free に切り替える（一度切り替えたら、そのページを開いている間は free のまま）
+//   ①読み込みが4秒以内に終わらない（アプリ側の判定）②キーの認証エラー（gm_authFailure）
+//   ③地図の所にGoogleのエラー表示が出た・「〜MapError」のエラー（上限超えの OverQuotaMapError など）
+// ・URL に ?map=free を付けると、最初から free で開く（試す用）
 // =====================================================================
 (function(){
   // マップID：新しいマーカー（AdvancedMarkerElement）とベクター地図に必要。
   // 今は Google が用意したテスト用ID。本番では Google Cloud で作った自分のIDに置き換える
   const GM_MAP_ID = 'DEMO_MAP_ID';
-  const GM = { Adv: null, iw: null, iwOpen: false, gLayers: {} };
+  const FREE_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+  const MAPLIBRE_JS  = 'https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js';
+  const MAPLIBRE_CSS = 'https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css';
+  const GM = { mode: 'google', Adv: null, iw: null, iwOpen: false, gLayers: {}, mlReady: false, mlPopup: null, seq: 0 };
   window.__GM = GM;
+  try{ if(new URLSearchParams(location.search).get('map') === 'free') GM.mode = 'free'; }catch(e){}
 
   // ----- 緯度経度・点・範囲 -----
   function LatLng(lat, lng){ this.lat = +lat; this.lng = +lng; }
@@ -54,6 +64,7 @@
     return null;
   }
   const gll = ll => { ll = toLL(ll); return { lat: ll.lat, lng: ll.lng }; };
+  const mll = ll => { ll = toLL(ll); return [ll.lng, ll.lat]; };
   function hav(a, b){
     const R = 6371000, r = Math.PI / 180;
     const dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
@@ -79,7 +90,6 @@
   LatLngBounds.prototype.getCenter = function(){ return new LatLng((this._s + this._n) / 2, (this._w + this._e) / 2); };
   LatLngBounds.prototype.getSouthWest = function(){ return new LatLng(this._s, this._w); };
   LatLngBounds.prototype.getNorthEast = function(){ return new LatLng(this._n, this._e); };
-  LatLngBounds.prototype._g = function(){ return { south: this._s, north: this._n, west: this._w, east: this._e }; };
 
   // ----- イベントの仕組み（on / off / once / fire） -----
   class Evented {
@@ -105,6 +115,24 @@
     listens(type){ return !!(this._ev && this._ev[type] && this._ev[type].length); }
   }
 
+  // ----- MapLibre（無料の地図）を読み込む -----
+  let mlLoading = null;
+  function loadMapLibre(){
+    if(window.maplibregl) return Promise.resolve(true);
+    if(mlLoading) return mlLoading;
+    if(!document.querySelector(`link[href="${MAPLIBRE_CSS}"]`)){
+      const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = MAPLIBRE_CSS; document.head.appendChild(l);
+    }
+    mlLoading = new Promise(res => {
+      const s = document.createElement('script');
+      s.src = MAPLIBRE_JS;
+      s.onload = () => res(!!window.maplibregl);
+      s.onerror = () => { mlLoading = null; res(false); };
+      document.head.appendChild(s);
+    });
+    return mlLoading;
+  }
+
   // ----- 地図 -----
   class GMap extends Evented {
     constructor(id, o){
@@ -115,13 +143,17 @@
       this._z = o.zoom != null ? o.zoom : 14;
       this._h = 0;
       this._layers = new Set();
-      this._g = null;
+      this._g = null;      // Googleマップ本体
+      this._ml = null;     // MapLibre（無料の地図）
       this._pendingFit = null;
       this._base = { type: 'roadmap' };
       window.__gmMap = this;
-      if(window._googleMapsReady) window.__gmInit();
+      if(GM.mode === 'free') this._createFree();
+      else if(window._googleMapsReady) window.__gmInit();
     }
+    // ===== Googleマップ本体を作る =====
     _create(Map, RenderingType){
+      if(GM.mode !== 'google' || this._g) return;
       const g = new Map(this._div, {
         center: gll(this._c), zoom: this._z, heading: this._h, tilt: 0,
         mapId: GM_MAP_ID, renderingType: RenderingType.VECTOR,
@@ -142,27 +174,100 @@
       Object.keys(GM.gLayers).forEach(n => GM.gLayers[n].setMap(g));
       this._layers.forEach(l => l._attach && l._attach());
       if(this._pendingFit){ const [b, o] = this._pendingFit; this._pendingFit = null; this.fitBounds(b, o); }
+      // 合図③：地図の所にGoogleのエラー表示が出たら、無料の地図に切り替える
+      try{
+        const mo = new MutationObserver(() => {
+          if(this._div.querySelector && this._div.querySelector('.gm-err-container, .gm-err-message')){ mo.disconnect(); this._switchToFree('Googleのエラー表示'); }
+        });
+        mo.observe(this._div, { childList: true, subtree: true });
+      }catch(e){}
       this.fire('load');
+    }
+    // ===== 無料の地図（MapLibre＋OpenFreeMap）を作る =====
+    _createFree(){
+      if(this._ml || this._freeStarting) return;
+      this._freeStarting = true;
+      GM.mode = 'free';
+      const box = document.createElement('div');
+      box.id = 'map-free';
+      box.style.cssText = 'position:absolute;inset:0;';
+      (this._div.parentNode || document.body).appendChild(box);
+      this._div.style.display = 'none';
+      this._div = box;
+      loadMapLibre().then(ok => {
+        if(!ok){ console.error('無料の地図（MapLibre）を読み込めませんでした'); return; }
+        const ml = new maplibregl.Map({
+          container: box, style: FREE_STYLE,
+          center: mll(this._c), zoom: this._z - 1, bearing: this._h,   // MapLibre の倍率は Google より1小さい（512pxの地図画像のため）
+          dragRotate: false, pitchWithRotate: false, touchPitch: false,
+          attributionControl: { compact: true }
+        });
+        ml.touchZoomRotate.disableRotation();   // 2本指で回さない（回転はボタンだけ）
+        ml.keyboard.disableRotation();
+        this._ml = ml;
+        ml.on('click', e => this.fire('click', { latlng: new LatLng(e.lngLat.lat, e.lngLat.lng), originalEvent: e.originalEvent }));
+        ml.on('dragstart', () => this.fire('dragstart'));
+        ml.on('dragend', () => this.fire('dragend'));
+        ml.on('rotate', () => this.fire('rotate'));
+        ml.on('zoomend', () => this.fire('zoomend'));
+        ml.on('moveend', () => this.fire('moveend'));
+        ml.on('load', () => {
+          GM.mlReady = true;
+          this._layers.forEach(l => l._attach && l._attach());
+          if(this._pendingFit){ const [b, o] = this._pendingFit; this._pendingFit = null; this.fitBounds(b, o); }
+          this.fire('load');
+        });
+        // パネルの開け閉めなどで枠の大きさが変わったら、地図も合わせる
+        try{ new ResizeObserver(() => ml.resize()).observe(box); }catch(e){}
+      });
+    }
+    // Googleが使えない合図が来たら、無料の地図に切り替える
+    _switchToFree(reason){
+      if(GM.mode === 'free') return;
+      console.warn('無料の地図に切り替えます：', reason);
+      this._c = this.getCenter(); this._z = this.getZoom(); this._h = this._heading();
+      this._layers.forEach(l => l._detach && l._detach());
+      if(GM.iw){ try{ GM.iw.close(); }catch(e){} GM.iwOpen = false; }
+      Object.keys(GM.gLayers).forEach(n => { try{ GM.gLayers[n].setMap(null); }catch(e){} });
+      this._g = null;
+      this._createFree();
     }
     getContainer(){ return this._div; }
     getSize(){ return new Point(this._div.clientWidth, this._div.clientHeight); }
     getCenter(){
+      if(this._ml){ const c = this._ml.getCenter(); return new LatLng(c.lat, c.lng); }
       if(this._g){ const c = this._g.getCenter(); if(c) return new LatLng(c.lat(), c.lng()); }
       return this._c;
     }
-    getZoom(){ if(this._g){ const z = this._g.getZoom(); if(z != null) return z; } return this._z; }
-    _heading(){ if(this._g){ const h = this._g.getHeading(); if(typeof h === 'number') return h; } return this._h; }
+    getZoom(){
+      if(this._ml) return this._ml.getZoom() + 1;
+      if(this._g){ const z = this._g.getZoom(); if(z != null) return z; }
+      return this._z;
+    }
+    _heading(){
+      if(this._ml) return ((this._ml.getBearing() % 360) + 360) % 360;
+      if(this._g){ const h = this._g.getHeading(); if(typeof h === 'number') return h; }
+      return this._h;
+    }
     setView(ll, zoom){
       ll = toLL(ll); this._c = ll; if(zoom != null) this._z = zoom;
-      if(this._g) this._g.moveCamera(zoom != null ? { center: gll(ll), zoom } : { center: gll(ll) });
+      if(this._ml) this._ml.jumpTo(zoom != null ? { center: mll(ll), zoom: zoom - 1 } : { center: mll(ll) });
+      else if(this._g) this._g.moveCamera(zoom != null ? { center: gll(ll), zoom } : { center: gll(ll) });
       return this;
     }
-    setZoom(z){ this._z = z; if(this._g) this._g.setZoom(z); return this; }
+    setZoom(z){
+      this._z = z;
+      if(this._ml) this._ml.easeTo({ zoom: z - 1, duration: 200 });
+      else if(this._g) this._g.setZoom(z);
+      return this;
+    }
     zoomIn(){ return this.setZoom(Math.round(this.getZoom()) + 1); }
     zoomOut(){ return this.setZoom(Math.round(this.getZoom()) - 1); }
     panTo(ll, opts){
       ll = toLL(ll); this._c = ll;
-      if(this._g){ if(opts && opts.animate === false) this._g.moveCamera({ center: gll(ll) }); else this._g.panTo(gll(ll)); }
+      const instant = opts && opts.animate === false;
+      if(this._ml){ if(instant) this._ml.jumpTo({ center: mll(ll) }); else this._ml.easeTo({ center: mll(ll), duration: 250 }); }
+      else if(this._g){ if(instant) this._g.moveCamera({ center: gll(ll) }); else this._g.panTo(gll(ll)); }
       return this;
     }
     panBy(off, opts){
@@ -174,30 +279,42 @@
       o = o || {};
       const bb = (b instanceof LatLngBounds) ? b : new LatLngBounds(b);
       if(!bb.isValid()) return this;
-      if(!this._g){ this._pendingFit = [bb, o]; this._c = bb.getCenter(); return this; }
       const tl = o.paddingTopLeft ? toPt(o.paddingTopLeft) : o.padding ? toPt(o.padding) : new Point(0, 0);
       const br = o.paddingBottomRight ? toPt(o.paddingBottomRight) : o.padding ? toPt(o.padding) : new Point(0, 0);
-      this._g.fitBounds(bb._g(), { top: tl.y, left: tl.x, bottom: br.y, right: br.x });
+      const pad = { top: tl.y, left: tl.x, bottom: br.y, right: br.x };
       const maxZ = (o.maxZoom != null) ? o.maxZoom : 18;
-      // Googleの fitBounds は向きを0（北）に戻してから動くので、回転していた時は元の向きに戻す
-      const keepH = this._h;
-      google.maps.event.addListenerOnce(this._g, 'idle', () => {
-        const cam = {};
-        if(this._g.getZoom() > maxZ) cam.zoom = maxZ;
-        if(keepH) cam.heading = keepH;
-        if(cam.zoom !== undefined || cam.heading !== undefined) this._g.moveCamera(cam);
-      });
+      if(this._ml && GM.mlReady){
+        // 範囲が狭すぎて余白が入らない時に止まらないよう、余白は地図の大きさの半分までにする
+        const s = this.getSize();
+        pad.top = Math.min(pad.top, s.y / 3); pad.bottom = Math.min(pad.bottom, s.y / 3);
+        pad.left = Math.min(pad.left, s.x / 3); pad.right = Math.min(pad.right, s.x / 3);
+        this._ml.fitBounds([[bb._w, bb._s], [bb._e, bb._n]], { padding: pad, maxZoom: maxZ - 1, bearing: this._heading(), duration: 300 });
+        return this;
+      }
+      if(this._g){
+        this._g.fitBounds({ south: bb._s, north: bb._n, west: bb._w, east: bb._e }, pad);
+        // Googleの fitBounds は向きを0（北）に戻してから動くので、回転していた時は元の向きに戻す
+        const keepH = this._h;
+        google.maps.event.addListenerOnce(this._g, 'idle', () => {
+          const cam = {};
+          if(this._g.getZoom() > maxZ) cam.zoom = maxZ;
+          if(keepH) cam.heading = keepH;
+          if(cam.zoom !== undefined || cam.heading !== undefined) this._g.moveCamera(cam);
+        });
+        return this;
+      }
+      this._pendingFit = [bb, o]; this._c = bb.getCenter();
       return this;
     }
-    // 回転：Leaflet の回転部品と同じ「bearing」（＝ 地図の向きのマイナス）で受け取る
-    // 毎コマ呼ばれるので、Googleの公式の例と同じく moveCamera（カメラを直接動かす命令）で回す
+    // 回転：Leaflet の回転部品と同じ「bearing」（＝ 地図の向きのマイナス）で受け取る。毎コマ呼ばれる
     setBearing(b){
       this._h = ((-b % 360) + 360) % 360;
-      if(this._g) this._g.moveCamera({ heading: this._h });
+      if(this._ml) this._ml.jumpTo({ bearing: this._h });
+      else if(this._g) this._g.moveCamera({ heading: this._h });
       return this;
     }
     getBearing(){ return (360 - this._heading()) % 360; }
-    // 画面上の位置 ⇔ 緯度経度（メルカトルで計算し、地図の向きの分だけ回す）
+    // 画面上の位置 ⇔ 緯度経度（メルカトルで計算し、地図の向きの分だけ回す。倍率は Google の数え方）
     _world(ll, z){
       const s = 256 * Math.pow(2, z), sin = Math.sin(ll.lat * Math.PI / 180);
       return [(ll.lng + 180) / 360 * s, (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * s];
@@ -224,19 +341,30 @@
     addLayer(l){ l.addTo(this); return this; }
     removeLayer(l){ if(l) l.remove(); return this; }
     hasLayer(l){ return !!l && l._map === this; }
-    closePopup(){ if(GM.iw){ GM.iw.close(); GM.iwOpen = false; } return this; }
-    invalidateSize(){ this.fire('resize'); return this; }
+    closePopup(){
+      if(GM.iw){ GM.iw.close(); GM.iwOpen = false; }
+      if(GM.mlPopup) GM.mlPopup.remove();
+      return this;
+    }
+    invalidateSize(){ if(this._ml) this._ml.resize(); this.fire('resize'); return this; }
     _openPopup(content, ll, anchor, opts){
-      if(!this._g || !GM.iw) return;
       const el = document.createElement('div');
       if(typeof content === 'string') el.innerHTML = content; else if(content) el.appendChild(content);
-      GM.iw.setOptions({ maxWidth: (opts && opts.maxWidth) || 300 });
+      const maxW = (opts && opts.maxWidth) || 300;
+      if(this._ml){
+        if(!GM.mlPopup) GM.mlPopup = new maplibregl.Popup({ closeButton: true, closeOnClick: true });
+        const off = (anchor && anchor._icon && anchor._icon.options.iconSize) ? Math.round(anchor._icon.options.iconSize[1] * 0.8) : 0;
+        GM.mlPopup.setOffset([0, -off]).setMaxWidth(maxW + 'px').setLngLat(mll(anchor ? anchor._ll : ll)).setDOMContent(el).addTo(this._ml);
+        return;
+      }
+      if(!this._g || !GM.iw) return;
+      GM.iw.setOptions({ maxWidth: maxW });
       GM.iw.setContent(el);
       if(anchor && anchor._gm) GM.iw.open({ map: this._g, anchor: anchor._gm });
       else { GM.iw.setPosition(gll(ll)); GM.iw.open({ map: this._g }); }
       GM.iwOpen = true;
     }
-    // 地図の種類・交通情報などの重ね表示（GoogleMutant の代わり）
+    // 地図の種類（GoogleMutant の代わり）。無料の地図には種類の切り替えがないので何もしない
     _applyBase(o){
       this._base = { type: (o && o.type) || 'roadmap' };
       if(this._g) this._g.setMapTypeId(this._base.type);
@@ -251,11 +379,13 @@
       if(this._map === m) return this;
       if(this._map) this._offMap();
       this._map = m; m._layers.add(this);
-      if(m._g) this._attach();
+      this._attach();
       return this;
     }
     remove(){ this._offMap(); if(this._group){ this._group._items.delete(this); this._group = null; } return this; }
     _offMap(){ if(this._map){ this._map._layers.delete(this); this._detach(); this._map = null; } }
+    _gReady(){ return !!(this._map && this._map._g && GM.mode === 'google'); }
+    _mlReady(){ return !!(this._map && this._map._ml && GM.mlReady && GM.mode === 'free'); }
     _attach(){} _detach(){}
   }
 
@@ -276,6 +406,7 @@
       this._interactive = o.interactive !== false;
       this.dragging = { enable: () => this._setDrag(true), disable: () => this._setDrag(false), enabled: () => this._drag };
     }
+    // アイコンの中身。どちらの地図も「アイコンの下の真ん中」を位置に合わせるので、iconAnchor の分だけずらす
     _content(){
       const ic = this._icon.options;
       const [w, h] = ic.iconSize || [12, 12];
@@ -297,38 +428,71 @@
       return wrap;
     }
     _clickable(){ return this._interactive && (this.listens('click') || !!this._popup); }
-    _attach(){
-      if(this._gm || !this._map || !this._map._g || !GM.Adv) return;
-      this._gm = new GM.Adv({
-        map: this._map._g, position: gll(this._ll), content: this._content(),
-        zIndex: 1000 + this._zi, gmpDraggable: this._drag, gmpClickable: this._clickable()
-      });
-      this._gm.addEventListener('gmp-click', ev => {
-        const de = ev && (ev.domEvent || ev);
-        this.fire('click', { latlng: this._ll, originalEvent: de });
-        if(this._popup) this._map._openPopup(this._popup, this._ll, this, {});
-      });
-      this._gm.addListener('dragstart', () => this.fire('dragstart'));
-      this._gm.addListener('drag', e => { if(e && e.latLng) this._ll = new LatLng(e.latLng.lat(), e.latLng.lng()); this.fire('drag'); });
-      this._gm.addListener('dragend', e => {
-        const p = (e && e.latLng) ? e.latLng : this._gm.position;
-        if(p) this._ll = toLL(p);
-        this.fire('dragend');
-      });
+    _onClick(de){
+      this.fire('click', { latlng: this._ll, originalEvent: de });
+      if(this._popup && this._map) this._map._openPopup(this._popup, this._ll, this, {});
     }
-    _detach(){ if(this._gm){ this._gm.map = null; this._gm = null; } }
+    _attach(){
+      if(this._gm || this._mk || !this._map) return;
+      if(this._gReady() && GM.Adv){
+        this._gm = new GM.Adv({
+          map: this._map._g, position: gll(this._ll), content: this._content(),
+          zIndex: 1000 + this._zi, gmpDraggable: this._drag, gmpClickable: this._clickable()
+        });
+        this._gm.addEventListener('gmp-click', ev => this._onClick(ev && (ev.domEvent || ev)));
+        this._gm.addListener('dragstart', () => this.fire('dragstart'));
+        this._gm.addListener('drag', e => { if(e && e.latLng) this._ll = new LatLng(e.latLng.lat(), e.latLng.lng()); this.fire('drag'); });
+        this._gm.addListener('dragend', e => {
+          const p = (e && e.latLng) ? e.latLng : this._gm.position;
+          if(p) this._ll = toLL(p);
+          this.fire('dragend');
+        });
+        return;
+      }
+      if(this._mlReady()){
+        // MapLibre はマーカーの外側の要素の位置（transform）を自分で書き換えるので、外側を1枚かぶせる
+        const outer = document.createElement('div');
+        outer.style.zIndex = String(1000 + this._zi);
+        outer.appendChild(this._content());
+        this._outer = outer;
+        outer.addEventListener('click', ev => {
+          if(!this._clickable()) return;            // 押しても何もしないマーカーは、地図を押したことにする
+          ev.stopPropagation();
+          this._onClick(ev);
+        });
+        this._mk = new maplibregl.Marker({ element: outer, anchor: 'bottom', draggable: this._drag })
+          .setLngLat(mll(this._ll)).addTo(this._map._ml);
+        this._mk.on('dragstart', () => this.fire('dragstart'));
+        this._mk.on('drag', () => { const p = this._mk.getLngLat(); this._ll = new LatLng(p.lat, p.lng); this.fire('drag'); });
+        this._mk.on('dragend', () => { const p = this._mk.getLngLat(); this._ll = new LatLng(p.lat, p.lng); this.fire('dragend'); });
+      }
+    }
+    _detach(){
+      if(this._gm){ this._gm.map = null; this._gm = null; }
+      if(this._mk){ this._mk.remove(); this._mk = null; this._outer = null; }
+    }
     _onListen(t){ if(t === 'click' && this._gm) this._gm.gmpClickable = this._clickable(); }
-    _setDrag(on){ this._drag = on; if(this._gm) this._gm.gmpDraggable = on; }
+    _setDrag(on){ this._drag = on; if(this._gm) this._gm.gmpDraggable = on; if(this._mk) this._mk.setDraggable(on); }
     getLatLng(){ return this._ll; }
-    setLatLng(ll){ this._ll = toLL(ll); if(this._gm) this._gm.position = gll(this._ll); this.fire('move', { latlng: this._ll }); return this; }
-    setIcon(icon){ this._icon = icon; if(this._gm) this._gm.content = this._content(); return this; }
+    setLatLng(ll){
+      this._ll = toLL(ll);
+      if(this._gm) this._gm.position = gll(this._ll);
+      if(this._mk) this._mk.setLngLat(mll(this._ll));
+      this.fire('move', { latlng: this._ll });
+      return this;
+    }
+    _refreshContent(){
+      if(this._gm) this._gm.content = this._content();
+      if(this._outer){ this._outer.innerHTML = ''; this._outer.appendChild(this._content()); }
+    }
+    setIcon(icon){ this._icon = icon; this._refreshContent(); return this; }
     setOpacity(o){ this._op = o; if(this._el) this._el.style.opacity = o; return this; }
-    setZIndexOffset(z){ this._zi = z; if(this._gm) this._gm.zIndex = 1000 + z; return this; }
+    setZIndexOffset(z){ this._zi = z; if(this._gm) this._gm.zIndex = 1000 + z; if(this._outer) this._outer.style.zIndex = String(1000 + z); return this; }
     getElement(){ return this._el || null; }
     bindPopup(html){ this._popup = html; if(this._gm) this._gm.gmpClickable = this._clickable(); return this; }
     openPopup(){ if(this._map) this._map._openPopup(this._popup, this._ll, this, {}); return this; }
     // ツールチップ：PCではマウスを乗せた時に名前を出す
-    bindTooltip(html){ this._tt = html; if(this._gm) this._gm.content = this._content(); return this; }
+    bindTooltip(html){ this._tt = html; this._refreshContent(); return this; }
     setTooltipContent(html){ this._tt = html; if(this._ttEl) this._ttEl.innerHTML = html; return this; }
     openTooltip(){
       if(this._el){ this._el.classList.add('tt-open'); clearTimeout(this._ttT); this._ttT = setTimeout(() => this._el && this._el.classList.remove('tt-open'), 3000); }
@@ -344,30 +508,64 @@
     return new Marker(ll, { icon: new DivIcon({ html, iconSize: [r * 2, r * 2], iconAnchor: [r, r], className: '' }), interactive: o.interactive === true, zIndexOffset: 900 });
   }
 
+  // ----- 無料の地図の線・面（GeoJSON の層）を扱う共通の部品 -----
+  function mlAddLayers(ml, id, data, layers){
+    ml.addSource(id, { type: 'geojson', data });
+    layers.forEach(l => ml.addLayer(Object.assign({ source: id }, l)));
+  }
+  function mlRemove(ml, id, layerIds){
+    try{ layerIds.forEach(l => { if(ml.getLayer(l)) ml.removeLayer(l); }); if(ml.getSource(id)) ml.removeSource(id); }catch(e){}
+  }
+  function circlePolygon(ll, r){
+    const pts = [], R = 6378137;
+    for(let i = 0; i <= 64; i++){
+      const t = i / 64 * 2 * Math.PI;
+      const dLat = (r * Math.cos(t)) / R * 180 / Math.PI;
+      const dLng = (r * Math.sin(t)) / (R * Math.cos(ll.lat * Math.PI / 180)) * 180 / Math.PI;
+      pts.push([ll.lng + dLng, ll.lat + dLat]);
+    }
+    return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [pts] } };
+  }
+
   // ----- メートルで大きさが決まる円（GPSの精度） -----
   class Circle extends Layer {
     constructor(ll, o){ super(); this._ll = toLL(ll); this.options = Object.assign({}, o || {}); }
     _attach(){
-      if(this._gc || !this._map || !this._map._g) return;
+      if(this._gc || this._mlId || !this._map) return;
       const o = this.options;
-      this._gc = new google.maps.Circle({
-        map: this._map._g, center: gll(this._ll), radius: o.radius || 10, clickable: false,
-        strokeColor: o.color || '#3388ff', strokeWeight: o.weight != null ? o.weight : 1, strokeOpacity: o.opacity != null ? o.opacity : 0.8,
-        fillColor: o.fillColor || o.color || '#3388ff', fillOpacity: o.fillOpacity != null ? o.fillOpacity : 0.2
-      });
+      if(this._gReady()){
+        this._gc = new google.maps.Circle({
+          map: this._map._g, center: gll(this._ll), radius: o.radius || 10, clickable: false,
+          strokeColor: o.color || '#3388ff', strokeWeight: o.weight != null ? o.weight : 1, strokeOpacity: o.opacity != null ? o.opacity : 0.8,
+          fillColor: o.fillColor || o.color || '#3388ff', fillOpacity: o.fillOpacity != null ? o.fillOpacity : 0.2
+        });
+        return;
+      }
+      if(this._mlReady()){
+        this._mlId = 'msc-' + (++GM.seq);
+        mlAddLayers(this._map._ml, this._mlId, circlePolygon(this._ll, o.radius || 10), [
+          { id: this._mlId + '-f', type: 'fill', paint: { 'fill-color': o.fillColor || o.color || '#3388ff', 'fill-opacity': o.fillOpacity != null ? o.fillOpacity : 0.2 } },
+          { id: this._mlId + '-l', type: 'line', paint: { 'line-color': o.color || '#3388ff', 'line-width': o.weight != null ? o.weight : 1, 'line-opacity': o.opacity != null ? o.opacity : 0.8 } }
+        ]);
+      }
     }
-    _detach(){ if(this._gc){ this._gc.setMap(null); this._gc = null; } }
-    setRadius(r){ this.options.radius = r; if(this._gc) this._gc.setRadius(r); return this; }
-    setLatLng(ll){ this._ll = toLL(ll); if(this._gc) this._gc.setCenter(gll(this._ll)); return this; }
+    _detach(){
+      if(this._gc){ this._gc.setMap(null); this._gc = null; }
+      if(this._mlId){ if(this._map && this._map._ml) mlRemove(this._map._ml, this._mlId, [this._mlId + '-f', this._mlId + '-l']); this._mlId = null; }
+    }
+    _mlUpdate(){ if(this._mlId && this._map && this._map._ml){ const s = this._map._ml.getSource(this._mlId); if(s) s.setData(circlePolygon(this._ll, this.options.radius || 10)); } }
+    setRadius(r){ this.options.radius = r; if(this._gc) this._gc.setRadius(r); this._mlUpdate(); return this; }
+    setLatLng(ll){ this._ll = toLL(ll); if(this._gc) this._gc.setCenter(gll(this._ll)); this._mlUpdate(); return this; }
     getLatLng(){ return this._ll; }
   }
 
   // ----- 線 -----
   function flatLL(a){ const out = []; (a || []).forEach(p => { if(Array.isArray(p) && Array.isArray(p[0])) flatLL(p).forEach(q => out.push(q)); else { const ll = toLL(p); if(ll) out.push(ll); } }); return out; }
+  function parseDash(d){ return d ? String(d).split(/[ ,]+/).map(Number).filter(n => n > 0) : null; }
   class Polyline extends Layer {
     constructor(lls, o){ super(); this._lls = flatLL(lls); this.options = Object.assign({ color: '#3388ff', weight: 3, opacity: 1 }, o || {}); }
     _gopts(){
-      const o = this.options, dash = o.dashArray ? String(o.dashArray).split(/[ ,]+/).map(Number).filter(n => n > 0) : null;
+      const o = this.options, dash = parseDash(o.dashArray);
       const base = { path: this._lls.map(gll), strokeColor: o.color, strokeWeight: o.weight, clickable: this.listens('click'), zIndex: o.zIndex || 1 };
       if(dash && dash.length){
         // 点線：Googleの線は点線の指定がないので、短い線の記号を等間隔に並べる
@@ -376,19 +574,65 @@
       }
       return Object.assign(base, { strokeOpacity: o.opacity, icons: [] });
     }
-    _attach(){
-      if(this._gp || !this._map || !this._map._g) return;
-      this._gp = new google.maps.Polyline(Object.assign(this._gopts(), { map: this._map._g }));
-      this._gp.addListener('click', e => this.fire('click', { latlng: e.latLng ? new LatLng(e.latLng.lat(), e.latLng.lng()) : null, originalEvent: e.domEvent }));
+    _geo(){ return { type: 'Feature', geometry: { type: 'LineString', coordinates: this._lls.map(mll) } }; }
+    _mlPaint(){
+      const o = this.options, dash = parseDash(o.dashArray), w = Math.max(o.weight, 1);
+      const p = { 'line-color': o.color, 'line-width': o.weight, 'line-opacity': o.opacity };
+      if(dash && dash.length) p['line-dasharray'] = [dash[0] / w, (dash[1] != null ? dash[1] : dash[0]) / w];   // MapLibre の点線は線の太さが単位
+      return p;
     }
-    _detach(){ if(this._gp){ this._gp.setMap(null); this._gp = null; } }
+    _attach(){
+      if(this._gp || this._mlId || !this._map) return;
+      if(this._gReady()){
+        this._gp = new google.maps.Polyline(Object.assign(this._gopts(), { map: this._map._g }));
+        this._gp.addListener('click', e => this.fire('click', { latlng: e.latLng ? new LatLng(e.latLng.lat(), e.latLng.lng()) : null, originalEvent: e.domEvent }));
+        return;
+      }
+      if(this._mlReady()){
+        const ml = this._map._ml, dashed = !!parseDash(this.options.dashArray);
+        this._mlId = 'msl-' + (++GM.seq);
+        mlAddLayers(ml, this._mlId, this._geo(), [
+          { id: this._mlId, type: 'line', layout: { 'line-join': 'round', 'line-cap': dashed ? 'butt' : 'round' }, paint: this._mlPaint() }
+        ]);
+        this._mlClick = e => this.fire('click', { latlng: new LatLng(e.lngLat.lat, e.lngLat.lng), originalEvent: e.originalEvent });
+        ml.on('click', this._mlId, this._mlClick);
+      }
+    }
+    _detach(){
+      if(this._gp){ this._gp.setMap(null); this._gp = null; }
+      if(this._mlId){
+        const ml = this._map && this._map._ml;
+        if(ml){ try{ ml.off('click', this._mlId, this._mlClick); }catch(e){} mlRemove(ml, this._mlId, [this._mlId]); }
+        this._mlId = null;
+      }
+    }
     _onListen(t){ if(t === 'click' && this._gp) this._gp.setOptions({ clickable: true }); }
-    setLatLngs(lls){ this._lls = flatLL(lls); if(this._gp) this._gp.setPath(this._lls.map(gll)); return this; }
+    _mlSet(){ if(this._mlId && this._map && this._map._ml){ const s = this._map._ml.getSource(this._mlId); if(s) s.setData(this._geo()); } }
+    setLatLngs(lls){ this._lls = flatLL(lls); if(this._gp) this._gp.setPath(this._lls.map(gll)); this._mlSet(); return this; }
     getLatLngs(){ return this._lls.slice(); }
-    addLatLng(ll){ this._lls.push(toLL(ll)); if(this._gp) this._gp.getPath().push(new google.maps.LatLng(this._lls[this._lls.length - 1].lat, this._lls[this._lls.length - 1].lng)); return this; }
-    setStyle(o){ Object.assign(this.options, o || {}); if(this._gp) this._gp.setOptions(this._gopts()); return this; }
+    addLatLng(ll){
+      this._lls.push(toLL(ll));
+      if(this._gp){ const q = this._lls[this._lls.length - 1]; this._gp.getPath().push(new google.maps.LatLng(q.lat, q.lng)); }
+      this._mlSet();
+      return this;
+    }
+    setStyle(o){
+      Object.assign(this.options, o || {});
+      if(this._gp) this._gp.setOptions(this._gopts());
+      if(this._mlId && this._map && this._map._ml){
+        const ml = this._map._ml, p = this._mlPaint();
+        Object.keys(p).forEach(k => { try{ ml.setPaintProperty(this._mlId, k, p[k]); }catch(e){} });
+        if(!p['line-dasharray']){ try{ ml.setPaintProperty(this._mlId, 'line-dasharray', null); }catch(e){} }
+      }
+      return this;
+    }
     getBounds(){ return new LatLngBounds(this._lls); }
-    bringToFront(){ this.options.zIndex = 10; if(this._gp) this._gp.setOptions({ zIndex: 10 }); return this; }
+    bringToFront(){
+      this.options.zIndex = 10;
+      if(this._gp) this._gp.setOptions({ zIndex: 10 });
+      if(this._mlId && this._map && this._map._ml){ try{ this._map._ml.moveLayer(this._mlId); }catch(e){} }
+      return this;
+    }
     bringToBack(){ this.options.zIndex = 0; if(this._gp) this._gp.setOptions({ zIndex: 0 }); return this; }
   }
 
@@ -477,7 +721,7 @@
       addTo(m){ m._applyBase(o); this._map = m; return this; },
       remove(){ return this; },
       addGoogleLayer(name){
-        if(!window.google || !google.maps || !google.maps[name]) return;
+        if(GM.mode !== 'google' || !window.google || !google.maps || !google.maps[name]) return;
         if(!GM.gLayers[name]) GM.gLayers[name] = new google.maps[name]();
         GM.gLayers[name].setMap(window.__gmMap && window.__gmMap._g ? window.__gmMap._g : null);
       },
@@ -488,17 +732,35 @@
   // ----- Googleマップの読み込みが終わったら、本物の地図を作る -----
   window.__gmInit = async function(){
     const m = window.__gmMap;
-    if(!m || m._g || GM._initing) return;
+    if(!m || m._g || GM._initing || GM.mode !== 'google') return;
     GM._initing = true;
     try{
       const { Map, RenderingType, InfoWindow } = await google.maps.importLibrary('maps');
       const { AdvancedMarkerElement } = await google.maps.importLibrary('marker');
+      if(GM.mode !== 'google') return;   // 待っている間に無料の地図に切り替わっていたら作らない
       GM.Adv = AdvancedMarkerElement;
       GM.iw = new InfoWindow();
       GM.iw.addListener('closeclick', () => { GM.iwOpen = false; });
       m._create(Map, RenderingType);
-    }catch(e){ console.error('Googleマップを作れませんでした', e); GM._initing = false; }
+    }catch(e){
+      console.warn('Googleマップを作れませんでした', e);
+      GM._initing = false;
+      m._switchToFree('Googleマップを作れない');
+    }
   };
+  // 合図②：キーの認証エラー（Google 公式の仕組み）
+  window.gm_authFailure = function(){ if(window.__gmMap) window.__gmMap._switchToFree('キーの認証エラー'); };
+  // 合図③：Googleが出す「〜MapError」のエラー（上限超えの OverQuotaMapError など）
+  (function(){
+    const orig = console.error.bind(console);
+    console.error = function(...a){
+      try{
+        const s = a.map(x => (x && x.message) ? x.message : String(x)).join(' ');
+        if(/[A-Za-z]+MapError/.test(s) && window.__gmMap) setTimeout(() => window.__gmMap._switchToFree(s.slice(0, 120)), 0);
+      }catch(e){}
+      return orig(...a);
+    };
+  })();
 
   window.L = {
     map: (id, o) => new GMap(id, o),
@@ -529,7 +791,8 @@
       }
     },
     gridLayer: { googleMutant: o => googleBase(o) },
-    tileLayer: () => ({ addTo(){ return this; }, remove(){ return this; } })   // 予備の地図（MapTiler）は使わない
+    // 合図①：アプリは「Googleが4秒以内に使えない」時に予備の地図（MapTiler）を置こうとする → 無料の地図に切り替える
+    tileLayer: () => ({ addTo(m){ if(m && m._switchToFree) m._switchToFree('Googleの読み込みが4秒以内に終わらない'); return this; }, remove(){ return this; } })
   };
 })();
 
@@ -586,6 +849,10 @@ body { background:#08090d; color:#e9e9ee; font-family:'Helvetica Neue',Arial,san
 /* マーカーの名前（PCでマウスを乗せた時） */
 .gm-ltt { display:none; position:absolute; left:50%; bottom:100%; transform:translate(-50%,-4px); background:#12141a; color:#eee; border:1px solid #343b48; border-radius:6px; padding:2px 7px; font-size:11px; white-space:nowrap; pointer-events:none; z-index:2; }
 .gm-lmk:hover .gm-ltt, .gm-lmk.tt-open .gm-ltt { display:block; }
+/* 無料の地図（MapLibre）の吹き出しを今までの見た目に合わせる */
+.maplibregl-popup-content { background:#12141a !important; color:#eee; border:1px solid #ff9f1c; border-radius:10px !important; padding:10px 12px !important; font-size:13px; }
+.maplibregl-popup-tip { border-top-color:#ff9f1c !important; border-bottom-color:#ff9f1c !important; }
+.maplibregl-popup-close-button { color:#9a9aa6; font-size:18px; }
 
 /* パネルが隠れている時に画面の端に出るバー */
 #panel-edge { display:none; position:fixed; left:0; right:0; bottom:0; z-index:1250;
@@ -2420,14 +2687,54 @@ function googleMutantOptions(){
   return opts;
 }
 
+// ===== Googleマップが使えない時は、予備の地図（MapTiler）に切り替える =====
+// 合図：①読み込みが4秒以内に終わらない ②キーの認証エラー（Google公式の gm_authFailure）
+//       ③地図の所にGoogleのエラー表示が出た・「〜MapError」のエラー（上限超えの OverQuotaMapError など）
+// 一度切り替えたら、そのページを開いている間は予備の地図のまま（後からGoogleが読み込まれても重ねない）
+let mapFallbackDone = false;
+function switchToFallbackMap(reason){
+  if(mapFallbackDone) return;
+  mapFallbackDone = true;
+  console.warn('予備の地図に切り替えます：', reason);
+  try{ if(googleLayer) map.removeLayer(googleLayer); }catch(e){}
+  googleLayer = null;
+  usingGoogleMap = false;
+  useMapTilerFallback();
+}
+window.gm_authFailure = ()=>switchToFallbackMap('キーの認証エラー');
+(function(){
+  const orig = console.error.bind(console);
+  console.error = function(...a){
+    try{
+      const s = a.map(x=>(x && x.message) ? x.message : String(x)).join(' ');
+      if(/[A-Za-z]+MapError/.test(s)) setTimeout(()=>switchToFallbackMap(s.slice(0,120)), 0);
+    }catch(e){}
+    return orig(...a);
+  };
+})();
+// 隠したGoogleマップの中に、Googleのエラー表示が出たら切り替える
+function watchGoogleErrors(){
+  const box = googleLayer && googleLayer._mutantContainer;
+  if(!box || box._errWatch) return;
+  box._errWatch = true;
+  try{
+    const mo = new MutationObserver(()=>{
+      if(box.querySelector('.gm-err-container, .gm-err-message')){ mo.disconnect(); switchToFallbackMap('Googleのエラー表示'); }
+    });
+    mo.observe(box, { childList:true, subtree:true });
+  }catch(e){}
+}
+
 function initGoogleLayer(){
+  if(mapFallbackDone) return;   // もう予備の地図に切り替えた後なら、Googleは重ねない
   try{
     googleLayer = L.gridLayer.googleMutant(googleMutantOptions()).addTo(map);
     fitMutantForRotation();
+    watchGoogleErrors();
     usingGoogleMap = true;
   }catch(e){
-    console.warn('Googleマップ読み込み失敗、MapTilerにフォールバック', e);
-    useMapTilerFallback();
+    console.warn('Googleマップ読み込み失敗、予備の地図に切り替え', e);
+    switchToFallbackMap('Googleマップを作れない');
   }
 }
 if(window._googleMapsReady){
@@ -2436,8 +2743,8 @@ if(window._googleMapsReady){
 } else {
   window._onGoogleMapsReadyCallback = initGoogleLayer;
 }
-// 4秒待ってGoogleが読み込まれなければMapTilerに切り替え
-setTimeout(()=>{ if(!usingGoogleMap) useMapTilerFallback(); }, 4000);
+// 4秒待ってGoogleが読み込まれなければ予備の地図に切り替え
+setTimeout(()=>{ if(!usingGoogleMap) switchToFallbackMap('Googleの読み込みが4秒以内に終わらない'); }, 4000);
 
 // ===== 地図コントロールパネル（地図の種類・レイヤー） =====
 function toggleMapControlsPanel(){
@@ -2490,6 +2797,7 @@ function rebuildGoogleLayer(){
   if(googleLayer) map.removeLayer(googleLayer);
   googleLayer = L.gridLayer.googleMutant(googleMutantOptions()).addTo(map);
   fitMutantForRotation();
+  watchGoogleErrors();
   if(trafficLayerOn) googleLayer.addGoogleLayer('TrafficLayer');
   if(transitLayerOn) googleLayer.addGoogleLayer('TransitLayer');
   if(bicyclingLayerOn) googleLayer.addGoogleLayer('BicyclingLayer');

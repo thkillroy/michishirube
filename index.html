@@ -1884,14 +1884,54 @@ function googleMutantOptions(){
   return opts;
 }
 
+// ===== Googleマップが使えない時は、予備の地図（MapTiler）に切り替える =====
+// 合図：①読み込みが4秒以内に終わらない ②キーの認証エラー（Google公式の gm_authFailure）
+//       ③地図の所にGoogleのエラー表示が出た・「〜MapError」のエラー（上限超えの OverQuotaMapError など）
+// 一度切り替えたら、そのページを開いている間は予備の地図のまま（後からGoogleが読み込まれても重ねない）
+let mapFallbackDone = false;
+function switchToFallbackMap(reason){
+  if(mapFallbackDone) return;
+  mapFallbackDone = true;
+  console.warn('予備の地図に切り替えます：', reason);
+  try{ if(googleLayer) map.removeLayer(googleLayer); }catch(e){}
+  googleLayer = null;
+  usingGoogleMap = false;
+  useMapTilerFallback();
+}
+window.gm_authFailure = ()=>switchToFallbackMap('キーの認証エラー');
+(function(){
+  const orig = console.error.bind(console);
+  console.error = function(...a){
+    try{
+      const s = a.map(x=>(x && x.message) ? x.message : String(x)).join(' ');
+      if(/[A-Za-z]+MapError/.test(s)) setTimeout(()=>switchToFallbackMap(s.slice(0,120)), 0);
+    }catch(e){}
+    return orig(...a);
+  };
+})();
+// 隠したGoogleマップの中に、Googleのエラー表示が出たら切り替える
+function watchGoogleErrors(){
+  const box = googleLayer && googleLayer._mutantContainer;
+  if(!box || box._errWatch) return;
+  box._errWatch = true;
+  try{
+    const mo = new MutationObserver(()=>{
+      if(box.querySelector('.gm-err-container, .gm-err-message')){ mo.disconnect(); switchToFallbackMap('Googleのエラー表示'); }
+    });
+    mo.observe(box, { childList:true, subtree:true });
+  }catch(e){}
+}
+
 function initGoogleLayer(){
+  if(mapFallbackDone) return;   // もう予備の地図に切り替えた後なら、Googleは重ねない
   try{
     googleLayer = L.gridLayer.googleMutant(googleMutantOptions()).addTo(map);
     fitMutantForRotation();
+    watchGoogleErrors();
     usingGoogleMap = true;
   }catch(e){
-    console.warn('Googleマップ読み込み失敗、MapTilerにフォールバック', e);
-    useMapTilerFallback();
+    console.warn('Googleマップ読み込み失敗、予備の地図に切り替え', e);
+    switchToFallbackMap('Googleマップを作れない');
   }
 }
 if(window._googleMapsReady){
@@ -1900,8 +1940,8 @@ if(window._googleMapsReady){
 } else {
   window._onGoogleMapsReadyCallback = initGoogleLayer;
 }
-// 4秒待ってGoogleが読み込まれなければMapTilerに切り替え
-setTimeout(()=>{ if(!usingGoogleMap) useMapTilerFallback(); }, 4000);
+// 4秒待ってGoogleが読み込まれなければ予備の地図に切り替え
+setTimeout(()=>{ if(!usingGoogleMap) switchToFallbackMap('Googleの読み込みが4秒以内に終わらない'); }, 4000);
 
 // ===== 地図コントロールパネル（地図の種類・レイヤー） =====
 function toggleMapControlsPanel(){
@@ -1954,6 +1994,7 @@ function rebuildGoogleLayer(){
   if(googleLayer) map.removeLayer(googleLayer);
   googleLayer = L.gridLayer.googleMutant(googleMutantOptions()).addTo(map);
   fitMutantForRotation();
+  watchGoogleErrors();
   if(trafficLayerOn) googleLayer.addGoogleLayer('TrafficLayer');
   if(transitLayerOn) googleLayer.addGoogleLayer('TransitLayer');
   if(bicyclingLayerOn) googleLayer.addGoogleLayer('BicyclingLayer');
