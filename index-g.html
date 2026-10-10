@@ -163,6 +163,12 @@
       this._ml = null;     // MapLibre（無料の地図）
       this._pendingFit = null;
       this._base = { type: 'roadmap' };
+      // 指・マウスで地図を操作している間は、アプリから地図を動かさない（ピンチの拡大縮小などが上書きされないように）
+      // ・アプリの中心合わせは map.touchZoom._zooming、ボタンでの移動中は map._panAnim._inProgress を見て止まる（Leaflet と同じ名前）
+      this.touchZoom = { _zooming: false };
+      this._panAnim = { _inProgress: false };
+      this._gesture = false;
+      this._watchGestures(this._div.parentNode || this._div);
       window.__gmMap = this;
       if(GM.mode === 'free') this._createFree();
       else if(window._googleMapsReady) window.__gmInit();
@@ -250,6 +256,27 @@
       this._g = null;
       this._createFree();
     }
+    _watchGestures(box){
+      const start = () => { clearTimeout(this._gT); this._gesture = true; this.touchZoom._zooming = true; };
+      const endLater = ms => { clearTimeout(this._gT); this._gT = setTimeout(() => this._gestureEnd(), ms); };
+      const opt = { capture: true, passive: true };
+      box.addEventListener('touchstart', start, opt);
+      const tEnd = e => { if(!e.touches || e.touches.length === 0) endLater(300); };
+      box.addEventListener('touchend', tEnd, opt);
+      box.addEventListener('touchcancel', tEnd, opt);
+      box.addEventListener('mousedown', start, true);
+      window.addEventListener('mouseup', () => { if(this._gesture) endLater(300); }, true);
+      box.addEventListener('wheel', () => { start(); endLater(400); }, opt);
+    }
+    // 指を離した後（0.3秒後）：その時の向き・現在地へ、なめらかに戻す
+    _gestureEnd(){
+      this._gesture = false; this.touchZoom._zooming = false;
+      // 回転：アプリが持っている「今の向き」を地図の実際の向きに合わせると、アプリが目標の向きまでなめらかに回す
+      try{ if(typeof headingShown === 'number') headingShown = this._heading(); }catch(e){}
+      // 追いかけ中：現在地へなめらかに戻す（動いている間はアプリの中心合わせが止まる）
+      try{ if(followMode && gpsMarker) this.panTo(gpsMarker.getLatLng()); }catch(e){}
+      try{ requestMotion(); }catch(e){}
+    }
     getContainer(){ return this._div; }
     getSize(){ return new Point(this._div.clientWidth, this._div.clientHeight); }
     getCenter(){
@@ -284,8 +311,13 @@
     panTo(ll, opts){
       ll = toLL(ll); this._c = ll;
       const instant = opts && opts.animate === false;
-      if(this._ml){ if(instant) this._ml.jumpTo({ center: mll(ll) }); else this._ml.easeTo({ center: mll(ll), duration: 250 }); }
-      else if(this._g){ if(instant) this._g.moveCamera({ center: gll(ll) }); else this._g.panTo(gll(ll)); }
+      if(this._ml){
+        if(instant) this._ml.jumpTo({ center: mll(ll) });
+        else { this._panAnim._inProgress = true; this._ml.once('moveend', () => { this._panAnim._inProgress = false; }); this._ml.easeTo({ center: mll(ll), duration: 250 }); }
+      } else if(this._g){
+        if(instant) this._g.moveCamera({ center: gll(ll) });
+        else { this._panAnim._inProgress = true; google.maps.event.addListenerOnce(this._g, 'idle', () => { this._panAnim._inProgress = false; }); this._g.panTo(gll(ll)); }
+      }
       return this;
     }
     panBy(off, opts){
@@ -327,6 +359,7 @@
     // 回転：Leaflet の回転部品と同じ「bearing」（＝ 地図の向きのマイナス）で受け取る。毎コマ呼ばれる
     setBearing(b){
       this._h = ((-b % 360) + 360) % 360;
+      if(this._gesture) return this;   // 指・マウスで操作中は動かさない（離した後に戻す）
       if(this._ml) this._ml.jumpTo({ bearing: this._h });
       else if(this._g) this._g.moveCamera({ heading: this._h });
       return this;
