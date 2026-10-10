@@ -40,9 +40,25 @@
 // ・URL に ?map=free を付けると、最初から free で開く（試す用）
 // =====================================================================
 (function(){
-  // マップID：新しいマーカー（AdvancedMarkerElement）とベクター地図に必要。
-  // 今は Google が用意したテスト用ID。本番では Google Cloud で作った自分のIDに置き換える
-  const GM_MAP_ID = 'DEMO_MAP_ID';
+  // ===== マップID（地図の見た目ごと） =====
+  // ・G版の地図の見た目は「Google Cloud で作った地図スタイル」を「マップID」に結び付けて使う
+  // ・見た目（標準 none／モノクロ mono／ダーク dark／ナイト night）× 文字とマーク（1 全部表示／2 地名・道路名・駅名だけ／3 全部消す）＝ 12通り
+  // ・Google Cloud（プロジェクト MICHI-SHIRUBE）で作ったマップID。2026-10-10 登録
+  // ・マップIDは地図を作る時にしか指定できないので、見た目を変えた時は地図を作り直す（地図を開いた回数に1回数えられる）
+  const GM_MAP_IDS = {
+    'none-1': 'b524098d6ad6eb0563c5ffd3',  'none-2': 'b524098d6ad6eb05fbdd4061',  'none-3': 'b524098d6ad6eb05fa74869c',
+    'mono-1': 'b524098d6ad6eb05119efda7',  'mono-2': 'b524098d6ad6eb0511c2772a',  'mono-3': 'b524098d6ad6eb0521f61739',
+    'dark-1': 'b524098d6ad6eb056e1c5eb6',  'dark-2': 'b524098d6ad6eb05c30e110e',  'dark-3': 'b524098d6ad6eb05d6d87d03',
+    'night-1': 'b524098d6ad6eb058e193285',  'night-2': 'b524098d6ad6eb054eb9d52f',  'night-3': 'b524098d6ad6eb05f92c1150'
+  };
+  // 今アプリで選ばれている見た目の名前（アプリの currentMapStyle / mapLabelMode を読む）
+  function styleKey(){
+    let base = 'none', mode = 'all';
+    try{ base = currentMapStyle || 'none'; }catch(e){}
+    try{ mode = mapLabelMode || 'all'; }catch(e){}
+    return `${base}-${({ all: 1, names: 2, none: 3 })[mode] || 1}`;
+  }
+  function mapIdFor(key){ return GM_MAP_IDS[key] || GM_MAP_IDS['none-1'] || 'DEMO_MAP_ID'; }
   const FREE_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
   const MAPLIBRE_JS  = 'https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js';
   const MAPLIBRE_CSS = 'https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css';
@@ -154,14 +170,16 @@
     // ===== Googleマップ本体を作る =====
     _create(Map, RenderingType){
       if(GM.mode !== 'google' || this._g) return;
+      this._mapId = mapIdFor(styleKey());
       const g = new Map(this._div, {
         center: gll(this._c), zoom: this._z, heading: this._h, tilt: 0,
-        mapId: GM_MAP_ID, renderingType: RenderingType.VECTOR,
+        mapId: this._mapId, renderingType: RenderingType.VECTOR,
         disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy', keyboardShortcuts: false,
         headingInteractionEnabled: false, tiltInteractionEnabled: false,   // 2本指で回したり傾けたりしない（回転はボタンだけ）
         mapTypeId: this._base.type
       });
       this._g = g;
+      this._GMap = Map; this._RT = RenderingType;
       g.addListener('click', e => {
         if(GM.iwOpen){ GM.iw.close(); GM.iwOpen = false; }   // Leaflet と同じく、地図を押すと吹き出しを閉じる
         this.fire('click', { latlng: e.latLng ? new LatLng(e.latLng.lat(), e.latLng.lng()) : null, originalEvent: e.domEvent });
@@ -364,11 +382,24 @@
       else { GM.iw.setPosition(gll(ll)); GM.iw.open({ map: this._g }); }
       GM.iwOpen = true;
     }
-    // 地図の種類（GoogleMutant の代わり）。無料の地図には種類の切り替えがないので何もしない
+    // 地図の種類と見た目（GoogleMutant の代わり）。無料の地図には種類・見た目の切り替えがないので何もしない
     _applyBase(o){
       this._base = { type: (o && o.type) || 'roadmap' };
-      if(this._g) this._g.setMapTypeId(this._base.type);
-      // 色の調整（styles）は、マップIDを使う地図では効かない（クラウド上の地図スタイルで設定する仕組み）
+      if(!this._g) return;   // まだ地図がない時は、作る時にこの設定で作る
+      if(mapIdFor(styleKey()) !== this._mapId) this._recreateGoogle();   // 見た目が変わった → そのマップIDで作り直す
+      else this._g.setMapTypeId(this._base.type);
+    }
+    // 見た目を変えた時に、Googleマップを作り直す（位置・倍率・向き・ピン・線はそのまま）
+    _recreateGoogle(){
+      if(!this._g || GM.mode !== 'google') return;
+      this._c = this.getCenter(); this._z = this.getZoom(); this._h = this._heading();
+      this._layers.forEach(l => l._detach && l._detach());
+      if(GM.iw){ try{ GM.iw.close(); }catch(e){} GM.iwOpen = false; }
+      try{ google.maps.event.clearInstanceListeners(this._g); }catch(e){}
+      Object.keys(GM.gLayers).forEach(n => { try{ GM.gLayers[n].setMap(null); }catch(e){} });
+      this._g = null;
+      this._div.innerHTML = '';
+      this._create(this._GMap, this._RT);
     }
   }
 
@@ -1313,14 +1344,10 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
     <select id="map-style-select" onchange="setMapStyle(this.value)" style="width:100%;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:7px 8px;font-size:12px;margin-bottom:8px;">
       <option value="none"></option><option value="mono"></option><option value="dark"></option><option value="night"></option>
     </select>
-    <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:#d6d6de;cursor:pointer;margin-bottom:6px;">
-      <input type="checkbox" id="map-hide-poi" onchange="setMapStyleFlags()" style="width:15px;height:15px;">
-      <span data-i18n="style_hide_poi">店などを消す</span>
-    </label>
-    <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:#d6d6de;cursor:pointer;margin-bottom:14px;">
-      <input type="checkbox" id="map-hide-labels" onchange="setMapStyleFlags()" style="width:15px;height:15px;">
-      <span data-i18n="style_hide_labels">文字を消す</span>
-    </label>
+    <div style="font-size:10px;color:#7e7e8b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;" data-i18n="style_marks_label">文字とマーク</div>
+    <select id="map-label-mode" onchange="setMapLabelMode(this.value)" style="width:100%;background:#08090d;border:1px solid #343b48;color:#e9e9ee;border-radius:7px;padding:6px 8px;font-size:12px;margin-bottom:14px;">
+      <option value="all"></option><option value="names"></option><option value="none"></option>
+    </select>
     <button onclick="startPlayback()" style="width:100%;padding:8px;margin-bottom:14px;background:#ff9f1c;border:none;color:#000;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;" data-i18n="play_btn">▶ ルート再生</button>
     <div style="font-size:10px;color:#7e7e8b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;" data-i18n="layers_label">表示</div>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#d6d6de;margin-bottom:8px;cursor:pointer;">
@@ -1728,6 +1755,7 @@ const SUPPORTED_LANGS = ['ja','en','zh-CN','zh-TW','ko','es','fr','th','vi','de'
 const translations = {
 ja: {
   gps_waiting:'📡 GPS待機中', gps_error:'📡 GPS失敗', gps_accuracy:'📡 精度 ±{m}m',
+  style_marks_label:"文字とマーク", style_label_all:"全部表示", style_label_names:"地名・道路名・駅名だけ", style_label_none:"全部消す",
   gps_fix_ios_other:"【iPhone（{app}）】\n1. 設定 → プライバシーとセキュリティ → 位置情報サービス をオン\n2. 同じ画面の一覧から「{app}」→「使用中のみ」\n3. {app} で、このページを読み込み直す",
   reach_arrived:"到着：{name}", reach_next:"次：{name}", reach_goal:"ゴール", notif_channel_name:"ナビの到着通知", bg_nav_message:"ナビ中：現在地を使っています",
   gps_err_denied:"📡 位置情報が未許可（タップで直し方）", gps_err_unavailable:"📡 位置が取れません（タップ）", gps_err_timeout:"📡 GPS時間切れ（タップ）", gps_help_title:"現在地が取れません", gps_why_denied:"このアプリに位置情報の使用が許可されていません。", gps_why_unavailable:"端末の位置情報がオフになっているか、電波が届かない場所です。", gps_why_timeout:"時間内に位置が取れませんでした。空が見える場所でもう一度お試しください。", gps_fix_ios_safari:"【iPhone（Safari）】\n1. 設定 → プライバシーとセキュリティ → 位置情報サービス をオン\n2. 同じ画面の「Safari Webサイト」→「使用中のみ」\n3. Safariのアドレス欄の左のボタン → Webサイトの設定 → 位置情報 →「許可」\n4. ページを読み込み直す", gps_fix_ios_line:"【iPhone（LINEの中で開いています）】\n1. 設定 → プライバシーとセキュリティ → 位置情報サービス → LINE →「使用中のみ」\n2. または、右上のメニューから「Safariで開く」\n3. ページを読み込み直す", gps_fix_android_app:"【Androidアプリ】\n1. 端末の位置情報（クイック設定）をオン\n2. 設定 → アプリ → MICHI-SHIRUBE → 権限 → 位置情報 →「アプリの使用中のみ許可」\n3. 下の「もう一度試す」を押す", gps_fix_android_browser:"【Android（Chromeなど）】\n1. 端末の位置情報（クイック設定）をオン\n2. アドレス欄の左のアイコン → 権限 → 位置情報 →「許可」\n3. ページを読み込み直す", gps_fix_android_line:"【Android（LINEの中で開いています）】\n1. 設定 → アプリ → LINE → 権限 → 位置情報 →「アプリの使用中のみ許可」\n2. または、右上のメニューから「ブラウザで開く」\n3. ページを読み込み直す", gps_fix_pc:"【パソコン】\n1. アドレス欄の左のアイコン → 位置情報 →「許可」\n2. Windowsは 設定 → プライバシーとセキュリティ → 位置情報 をオン\n3. ページを読み込み直す", gps_help_retry:"もう一度試す", gps_help_close:"閉じる",
@@ -1785,6 +1813,7 @@ ja: {
 },
 en: {
   gps_waiting:'📡 Waiting for GPS', gps_error:'📡 GPS failed', gps_accuracy:'📡 Accuracy ±{m}m',
+  style_marks_label:"Labels & icons", style_label_all:"Show all", style_label_names:"Place, road & station names only", style_label_none:"Hide all",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Settings → Privacy & Security → turn on Location Services\n2. In the list on the same screen: \"{app}\" → \"While Using the App\"\n3. Reload this page in {app}",
   reach_arrived:"Arrived: {name}", reach_next:"Next: {name}", reach_goal:"Goal", notif_channel_name:"Navigation arrivals", bg_nav_message:"Navigating: using your location",
   gps_err_denied:"📡 Location not allowed (tap for help)", gps_err_unavailable:"📡 Location unavailable (tap)", gps_err_timeout:"📡 GPS timed out (tap)", gps_help_title:"Cannot get your location", gps_why_denied:"This app is not allowed to use your location.", gps_why_unavailable:"Location is turned off on your device, or there is no signal here.", gps_why_timeout:"Your location could not be found in time. Try again somewhere you can see the sky.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Settings → Privacy & Security → turn on Location Services\n2. On the same screen: \"Safari Websites\" → \"While Using the App\"\n3. In Safari, tap the button left of the address bar → Website Settings → Location → \"Allow\"\n4. Reload the page", gps_fix_ios_line:"[iPhone (opened inside LINE)]\n1. Settings → Privacy & Security → Location Services → LINE → \"While Using the App\"\n2. Or open it in Safari from the menu at the top right\n3. Reload the page", gps_fix_android_app:"[Android app]\n1. Turn on Location in Quick Settings\n2. Settings → Apps → MICHI-SHIRUBE → Permissions → Location → \"Allow only while using the app\"\n3. Press \"Try again\" below", gps_fix_android_browser:"[Android (Chrome, etc.)]\n1. Turn on Location in Quick Settings\n2. Tap the icon left of the address bar → Permissions → Location → \"Allow\"\n3. Reload the page", gps_fix_android_line:"[Android (opened inside LINE)]\n1. Settings → Apps → LINE → Permissions → Location → \"Allow only while using the app\"\n2. Or open it in your browser from the menu at the top right\n3. Reload the page", gps_fix_pc:"[Computer]\n1. Click the icon left of the address bar → Location → \"Allow\"\n2. On Windows: Settings → Privacy & security → turn on Location\n3. Reload the page", gps_help_retry:"Try again", gps_help_close:"Close",
@@ -1842,6 +1871,7 @@ en: {
 },
 'zh-CN': {
   gps_waiting:'📡 等待GPS', gps_error:'📡 GPS失败', gps_accuracy:'📡 精度 ±{m}米',
+  style_marks_label:"文字与图标", style_label_all:"全部显示", style_label_names:"仅地名・道路名・车站名", style_label_none:"全部隐藏",
   gps_fix_ios_other:"【iPhone（{app}）】\n1. 设置 → 隐私与安全性 → 打开定位服务\n2. 在同一页面的列表中：「{app}」→「使用App期间」\n3. 在{app}中重新加载此页面",
   reach_arrived:"到达：{name}", reach_next:"下一个：{name}", reach_goal:"终点", notif_channel_name:"导航到达通知", bg_nav_message:"导航中：正在使用当前位置",
   gps_err_denied:"📡 未允许使用位置（点按查看）", gps_err_unavailable:"📡 无法获取位置（点按）", gps_err_timeout:"📡 GPS超时（点按）", gps_help_title:"无法获取当前位置", gps_why_denied:"此应用未获准使用位置信息。", gps_why_unavailable:"设备的位置信息已关闭，或此处没有信号。", gps_why_timeout:"未能及时获取位置。请到能看到天空的地方重试。", gps_fix_ios_safari:"【iPhone（Safari）】\n1. 设置 → 隐私与安全性 → 打开定位服务\n2. 在同一页面：「Safari 浏览器网站」→「使用App期间」\n3. 在Safari中点地址栏左侧的按钮 → 网站设置 → 位置 →「允许」\n4. 重新加载页面", gps_fix_ios_line:"【iPhone（在LINE中打开）】\n1. 设置 → 隐私与安全性 → 定位服务 → LINE →「使用App期间」\n2. 或从右上角菜单选择「在Safari中打开」\n3. 重新加载页面", gps_fix_android_app:"【Android应用】\n1. 在快捷设置中打开位置信息\n2. 设置 → 应用 → MICHI-SHIRUBE → 权限 → 位置信息 →「仅在使用该应用时允许」\n3. 点下方的「重试」", gps_fix_android_browser:"【Android（Chrome等）】\n1. 在快捷设置中打开位置信息\n2. 点地址栏左侧的图标 → 权限 → 位置信息 →「允许」\n3. 重新加载页面", gps_fix_android_line:"【Android（在LINE中打开）】\n1. 设置 → 应用 → LINE → 权限 → 位置信息 →「仅在使用该应用时允许」\n2. 或从右上角菜单选择「在浏览器中打开」\n3. 重新加载页面", gps_fix_pc:"【电脑】\n1. 点地址栏左侧的图标 → 位置 →「允许」\n2. Windows：设置 → 隐私和安全性 → 打开位置\n3. 重新加载页面", gps_help_retry:"重试", gps_help_close:"关闭",
@@ -1899,6 +1929,7 @@ en: {
 },
 'zh-TW': {
   gps_waiting:'📡 等待GPS', gps_error:'📡 GPS失敗', gps_accuracy:'📡 精度 ±{m}公尺',
+  style_marks_label:"文字與圖示", style_label_all:"全部顯示", style_label_names:"僅地名・道路名・車站名", style_label_none:"全部隱藏",
   gps_fix_ios_other:"【iPhone（{app}）】\n1. 設定 → 隱私權與安全性 → 開啟定位服務\n2. 在同一頁面的列表中：「{app}」→「使用App期間」\n3. 在{app}中重新載入此頁面",
   reach_arrived:"抵達：{name}", reach_next:"下一個：{name}", reach_goal:"終點", notif_channel_name:"導航抵達通知", bg_nav_message:"導航中：正在使用目前位置",
   gps_err_denied:"📡 未允許使用位置（點一下查看）", gps_err_unavailable:"📡 無法取得位置（點一下）", gps_err_timeout:"📡 GPS逾時（點一下）", gps_help_title:"無法取得目前位置", gps_why_denied:"此應用程式未獲准使用位置資訊。", gps_why_unavailable:"裝置的定位已關閉，或這裡收不到訊號。", gps_why_timeout:"未能及時取得位置。請到看得見天空的地方再試一次。", gps_fix_ios_safari:"【iPhone（Safari）】\n1. 設定 → 隱私權與安全性 → 開啟定位服務\n2. 同一頁面：「Safari網站」→「使用App期間」\n3. 在Safari點網址列左側的按鈕 → 網站設定 → 位置 →「允許」\n4. 重新載入頁面", gps_fix_ios_line:"【iPhone（在LINE中開啟）】\n1. 設定 → 隱私權與安全性 → 定位服務 → LINE →「使用App期間」\n2. 或從右上角選單選擇「在Safari中開啟」\n3. 重新載入頁面", gps_fix_android_app:"【Android應用程式】\n1. 在快速設定中開啟定位\n2. 設定 → 應用程式 → MICHI-SHIRUBE → 權限 → 位置 →「僅在使用應用程式時允許」\n3. 點下方的「再試一次」", gps_fix_android_browser:"【Android（Chrome等）】\n1. 在快速設定中開啟定位\n2. 點網址列左側的圖示 → 權限 → 位置 →「允許」\n3. 重新載入頁面", gps_fix_android_line:"【Android（在LINE中開啟）】\n1. 設定 → 應用程式 → LINE → 權限 → 位置 →「僅在使用應用程式時允許」\n2. 或從右上角選單選擇「以瀏覽器開啟」\n3. 重新載入頁面", gps_fix_pc:"【電腦】\n1. 點網址列左側的圖示 → 位置 →「允許」\n2. Windows：設定 → 隱私權與安全性 → 開啟位置\n3. 重新載入頁面", gps_help_retry:"再試一次", gps_help_close:"關閉",
@@ -1956,6 +1987,7 @@ en: {
 },
 ko: {
   gps_waiting:'📡 GPS 대기 중', gps_error:'📡 GPS 실패', gps_accuracy:'📡 정확도 ±{m}m',
+  style_marks_label:"글자와 아이콘", style_label_all:"모두 표시", style_label_names:"지명・도로명・역명만", style_label_none:"모두 숨기기",
   gps_fix_ios_other:"[iPhone ({app})]\n1. 설정 → 개인정보 보호 및 보안 → 위치 서비스 켜기\n2. 같은 화면의 목록에서 「{app}」→「앱을 사용하는 동안」\n3. {app}에서 이 페이지 새로고침",
   reach_arrived:"도착: {name}", reach_next:"다음: {name}", reach_goal:"목적지", notif_channel_name:"내비 도착 알림", bg_nav_message:"내비 중: 현재 위치를 사용하고 있습니다",
   gps_err_denied:"📡 위치 권한 없음 (탭하여 도움말)", gps_err_unavailable:"📡 위치를 가져올 수 없음 (탭)", gps_err_timeout:"📡 GPS 시간 초과 (탭)", gps_help_title:"현재 위치를 가져올 수 없습니다", gps_why_denied:"이 앱에 위치 사용이 허용되어 있지 않습니다.", gps_why_unavailable:"기기의 위치 기능이 꺼져 있거나 신호가 닿지 않는 곳입니다.", gps_why_timeout:"시간 안에 위치를 찾지 못했습니다. 하늘이 보이는 곳에서 다시 시도하세요.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. 설정 → 개인정보 보호 및 보안 → 위치 서비스 켜기\n2. 같은 화면에서 「Safari 웹 사이트」→「앱을 사용하는 동안」\n3. Safari 주소창 왼쪽 버튼 → 웹 사이트 설정 → 위치 →「허용」\n4. 페이지 새로고침", gps_fix_ios_line:"[iPhone (LINE 안에서 열림)]\n1. 설정 → 개인정보 보호 및 보안 → 위치 서비스 → LINE →「앱을 사용하는 동안」\n2. 또는 오른쪽 위 메뉴에서 「Safari로 열기」\n3. 페이지 새로고침", gps_fix_android_app:"[Android 앱]\n1. 빠른 설정에서 위치 켜기\n2. 설정 → 애플리케이션 → MICHI-SHIRUBE → 권한 → 위치 →「앱 사용 중에만 허용」\n3. 아래의 「다시 시도」 누르기", gps_fix_android_browser:"[Android (Chrome 등)]\n1. 빠른 설정에서 위치 켜기\n2. 주소창 왼쪽 아이콘 → 권한 → 위치 →「허용」\n3. 페이지 새로고침", gps_fix_android_line:"[Android (LINE 안에서 열림)]\n1. 설정 → 애플리케이션 → LINE → 권한 → 위치 →「앱 사용 중에만 허용」\n2. 또는 오른쪽 위 메뉴에서 「브라우저로 열기」\n3. 페이지 새로고침", gps_fix_pc:"[컴퓨터]\n1. 주소창 왼쪽 아이콘 → 위치 →「허용」\n2. Windows: 설정 → 개인 정보 및 보안 → 위치 켜기\n3. 페이지 새로고침", gps_help_retry:"다시 시도", gps_help_close:"닫기",
@@ -2013,6 +2045,7 @@ ko: {
 },
 es: {
   gps_waiting:'📡 Esperando GPS', gps_error:'📡 Error de GPS', gps_accuracy:'📡 Precisión ±{m}m',
+  style_marks_label:"Textos e iconos", style_label_all:"Mostrar todo", style_label_names:"Solo lugares, calles y estaciones", style_label_none:"Ocultar todo",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Ajustes → Privacidad y seguridad → activa Localización\n2. En la lista de la misma pantalla: «{app}» → «Cuando se use la app»\n3. Recarga esta página en {app}",
   reach_arrived:"Llegada: {name}", reach_next:"Siguiente: {name}", reach_goal:"Meta", notif_channel_name:"Llegadas de navegación", bg_nav_message:"Navegando: usando tu ubicación",
   gps_err_denied:"📡 Ubicación no permitida (toca)", gps_err_unavailable:"📡 Ubicación no disponible (toca)", gps_err_timeout:"📡 GPS agotó el tiempo (toca)", gps_help_title:"No se puede obtener tu ubicación", gps_why_denied:"Esta app no tiene permiso para usar tu ubicación.", gps_why_unavailable:"La ubicación del dispositivo está desactivada o aquí no hay señal.", gps_why_timeout:"No se encontró tu ubicación a tiempo. Inténtalo de nuevo donde se vea el cielo.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Ajustes → Privacidad y seguridad → activa Localización\n2. En la misma pantalla: «Sitios web de Safari» → «Cuando se use la app»\n3. En Safari, toca el botón a la izquierda de la barra de direcciones → Ajustes del sitio web → Ubicación → «Permitir»\n4. Recarga la página", gps_fix_ios_line:"[iPhone (abierto dentro de LINE)]\n1. Ajustes → Privacidad y seguridad → Localización → LINE → «Cuando se use la app»\n2. O ábrelo en Safari desde el menú de arriba a la derecha\n3. Recarga la página", gps_fix_android_app:"[App de Android]\n1. Activa la ubicación en los ajustes rápidos\n2. Ajustes → Aplicaciones → MICHI-SHIRUBE → Permisos → Ubicación → «Permitir solo mientras se usa la app»\n3. Pulsa «Reintentar» abajo", gps_fix_android_browser:"[Android (Chrome, etc.)]\n1. Activa la ubicación en los ajustes rápidos\n2. Toca el icono a la izquierda de la barra de direcciones → Permisos → Ubicación → «Permitir»\n3. Recarga la página", gps_fix_android_line:"[Android (abierto dentro de LINE)]\n1. Ajustes → Aplicaciones → LINE → Permisos → Ubicación → «Permitir solo mientras se usa la app»\n2. O ábrelo en tu navegador desde el menú de arriba a la derecha\n3. Recarga la página", gps_fix_pc:"[Ordenador]\n1. Haz clic en el icono a la izquierda de la barra de direcciones → Ubicación → «Permitir»\n2. En Windows: Configuración → Privacidad y seguridad → activa Ubicación\n3. Recarga la página", gps_help_retry:"Reintentar", gps_help_close:"Cerrar",
@@ -2070,6 +2103,7 @@ es: {
 },
 fr: {
   gps_waiting:'📡 En attente du GPS', gps_error:'📡 Échec du GPS', gps_accuracy:'📡 Précision ±{m}m',
+  style_marks_label:"Textes et icônes", style_label_all:"Tout afficher", style_label_names:"Lieux, routes et gares seulement", style_label_none:"Tout masquer",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Réglages → Confidentialité et sécurité → activez Service de localisation\n2. Dans la liste du même écran : « {app} » → « Lorsque l’app est active »\n3. Rechargez cette page dans {app}",
   reach_arrived:"Arrivé : {name}", reach_next:"Suivant : {name}", reach_goal:"Arrivée", notif_channel_name:"Arrivées de navigation", bg_nav_message:"Navigation : utilisation de votre position",
   gps_err_denied:"📡 Position non autorisée (touchez)", gps_err_unavailable:"📡 Position indisponible (touchez)", gps_err_timeout:"📡 Délai GPS dépassé (touchez)", gps_help_title:"Impossible d’obtenir votre position", gps_why_denied:"Cette app n’est pas autorisée à utiliser votre position.", gps_why_unavailable:"La localisation de l’appareil est désactivée, ou il n’y a pas de signal ici.", gps_why_timeout:"Votre position n’a pas été trouvée à temps. Réessayez à un endroit où le ciel est visible.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Réglages → Confidentialité et sécurité → activez Service de localisation\n2. Sur le même écran : « Sites web Safari » → « Lorsque l’app est active »\n3. Dans Safari, touchez le bouton à gauche de la barre d’adresse → Réglages du site web → Position → « Autoriser »\n4. Rechargez la page", gps_fix_ios_line:"[iPhone (ouvert dans LINE)]\n1. Réglages → Confidentialité et sécurité → Service de localisation → LINE → « Lorsque l’app est active »\n2. Ou ouvrez-le dans Safari depuis le menu en haut à droite\n3. Rechargez la page", gps_fix_android_app:"[App Android]\n1. Activez la localisation dans les réglages rapides\n2. Paramètres → Applications → MICHI-SHIRUBE → Autorisations → Position → « Autoriser seulement si l’appli est en cours d’utilisation »\n3. Appuyez sur « Réessayer » ci-dessous", gps_fix_android_browser:"[Android (Chrome, etc.)]\n1. Activez la localisation dans les réglages rapides\n2. Touchez l’icône à gauche de la barre d’adresse → Autorisations → Position → « Autoriser »\n3. Rechargez la page", gps_fix_android_line:"[Android (ouvert dans LINE)]\n1. Paramètres → Applications → LINE → Autorisations → Position → « Autoriser seulement si l’appli est en cours d’utilisation »\n2. Ou ouvrez-le dans votre navigateur depuis le menu en haut à droite\n3. Rechargez la page", gps_fix_pc:"[Ordinateur]\n1. Cliquez sur l’icône à gauche de la barre d’adresse → Position → « Autoriser »\n2. Sous Windows : Paramètres → Confidentialité et sécurité → activez Localisation\n3. Rechargez la page", gps_help_retry:"Réessayer", gps_help_close:"Fermer",
@@ -2127,6 +2161,7 @@ fr: {
 },
 th: {
   gps_waiting:'📡 กำลังรอ GPS', gps_error:'📡 GPS ล้มเหลว', gps_accuracy:'📡 ความแม่นยำ ±{m}ม.',
+  style_marks_label:"ข้อความและไอคอน", style_label_all:"แสดงทั้งหมด", style_label_names:"เฉพาะชื่อสถานที่ ถนน และสถานี", style_label_none:"ซ่อนทั้งหมด",
   gps_fix_ios_other:"[iPhone ({app})]\n1. การตั้งค่า → ความเป็นส่วนตัวและความปลอดภัย → เปิดบริการหาตำแหน่ง\n2. ในรายการหน้าเดียวกัน: «{app}» → «ขณะใช้แอป»\n3. โหลดหน้านี้ใหม่ใน {app}",
   reach_arrived:"ถึงแล้ว: {name}", reach_next:"ถัดไป: {name}", reach_goal:"ปลายทาง", notif_channel_name:"แจ้งเตือนเมื่อถึงจุดระหว่างนำทาง", bg_nav_message:"กำลังนำทาง: กำลังใช้ตำแหน่งของคุณ",
   gps_err_denied:"📡 ไม่ได้อนุญาตตำแหน่ง (แตะเพื่อดูวิธี)", gps_err_unavailable:"📡 ระบุตำแหน่งไม่ได้ (แตะ)", gps_err_timeout:"📡 GPS หมดเวลา (แตะ)", gps_help_title:"ระบุตำแหน่งปัจจุบันไม่ได้", gps_why_denied:"แอปนี้ไม่ได้รับอนุญาตให้ใช้ตำแหน่งของคุณ", gps_why_unavailable:"ปิดตำแหน่งในอุปกรณ์อยู่ หรือบริเวณนี้ไม่มีสัญญาณ", gps_why_timeout:"หาตำแหน่งไม่ทันเวลา ลองอีกครั้งในที่ที่มองเห็นท้องฟ้า", gps_fix_ios_safari:"[iPhone (Safari)]\n1. การตั้งค่า → ความเป็นส่วนตัวและความปลอดภัย → เปิดบริการหาตำแหน่ง\n2. ในหน้าเดียวกัน: «เว็บไซต์ Safari» → «ขณะใช้แอป»\n3. ใน Safari แตะปุ่มด้านซ้ายของแถบที่อยู่ → การตั้งค่าเว็บไซต์ → ตำแหน่ง → «อนุญาต»\n4. โหลดหน้าใหม่", gps_fix_ios_line:"[iPhone (เปิดอยู่ใน LINE)]\n1. การตั้งค่า → ความเป็นส่วนตัวและความปลอดภัย → บริการหาตำแหน่ง → LINE → «ขณะใช้แอป»\n2. หรือเปิดใน Safari จากเมนูมุมขวาบน\n3. โหลดหน้าใหม่", gps_fix_android_app:"[แอป Android]\n1. เปิดตำแหน่งในการตั้งค่าด่วน\n2. การตั้งค่า → แอป → MICHI-SHIRUBE → สิทธิ์ → ตำแหน่ง → «อนุญาตขณะใช้แอปเท่านั้น»\n3. กด «ลองอีกครั้ง» ด้านล่าง", gps_fix_android_browser:"[Android (Chrome ฯลฯ)]\n1. เปิดตำแหน่งในการตั้งค่าด่วน\n2. แตะไอคอนด้านซ้ายของแถบที่อยู่ → สิทธิ์ → ตำแหน่ง → «อนุญาต»\n3. โหลดหน้าใหม่", gps_fix_android_line:"[Android (เปิดอยู่ใน LINE)]\n1. การตั้งค่า → แอป → LINE → สิทธิ์ → ตำแหน่ง → «อนุญาตขณะใช้แอปเท่านั้น»\n2. หรือเปิดในเบราว์เซอร์จากเมนูมุมขวาบน\n3. โหลดหน้าใหม่", gps_fix_pc:"[คอมพิวเตอร์]\n1. คลิกไอคอนด้านซ้ายของแถบที่อยู่ → ตำแหน่ง → «อนุญาต»\n2. Windows: การตั้งค่า → ความเป็นส่วนตัวและความปลอดภัย → เปิดตำแหน่ง\n3. โหลดหน้าใหม่", gps_help_retry:"ลองอีกครั้ง", gps_help_close:"ปิด",
@@ -2184,6 +2219,7 @@ th: {
 },
 de: {
   gps_waiting:'📡 Warte auf GPS', gps_error:'📡 GPS-Fehler', gps_accuracy:'📡 Genauigkeit ±{m}m',
+  style_marks_label:"Beschriftungen & Symbole", style_label_all:"Alles anzeigen", style_label_names:"Nur Orte, Straßen und Bahnhöfe", style_label_none:"Alles ausblenden",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Einstellungen → Datenschutz & Sicherheit → Ortungsdienste einschalten\n2. In der Liste im selben Bildschirm: „{app}“ → „Beim Verwenden der App“\n3. Diese Seite in {app} neu laden",
   reach_arrived:"Angekommen: {name}", reach_next:"Nächster: {name}", reach_goal:"Ziel", notif_channel_name:"Navi-Ankünfte", bg_nav_message:"Navigation: Standort wird verwendet",
   gps_err_denied:"📡 Standort nicht erlaubt (tippen)", gps_err_unavailable:"📡 Standort nicht verfügbar (tippen)", gps_err_timeout:"📡 GPS-Zeitüberschreitung (tippen)", gps_help_title:"Standort kann nicht ermittelt werden", gps_why_denied:"Diese App darf deinen Standort nicht verwenden.", gps_why_unavailable:"Der Standort ist am Gerät ausgeschaltet oder hier gibt es kein Signal.", gps_why_timeout:"Dein Standort wurde nicht rechtzeitig gefunden. Versuche es dort erneut, wo der Himmel sichtbar ist.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Einstellungen → Datenschutz & Sicherheit → Ortungsdienste einschalten\n2. Im selben Bildschirm: „Safari-Websites“ → „Beim Verwenden der App“\n3. In Safari die Taste links neben der Adressleiste → Website-Einstellungen → Standort → „Erlauben“\n4. Seite neu laden", gps_fix_ios_line:"[iPhone (in LINE geöffnet)]\n1. Einstellungen → Datenschutz & Sicherheit → Ortungsdienste → LINE → „Beim Verwenden der App“\n2. Oder über das Menü oben rechts in Safari öffnen\n3. Seite neu laden", gps_fix_android_app:"[Android-App]\n1. Standort in den Schnelleinstellungen einschalten\n2. Einstellungen → Apps → MICHI-SHIRUBE → Berechtigungen → Standort → „Nur während der Nutzung der App zulassen“\n3. Unten auf „Erneut versuchen“ tippen", gps_fix_android_browser:"[Android (Chrome usw.)]\n1. Standort in den Schnelleinstellungen einschalten\n2. Symbol links neben der Adressleiste → Berechtigungen → Standort → „Zulassen“\n3. Seite neu laden", gps_fix_android_line:"[Android (in LINE geöffnet)]\n1. Einstellungen → Apps → LINE → Berechtigungen → Standort → „Nur während der Nutzung der App zulassen“\n2. Oder über das Menü oben rechts im Browser öffnen\n3. Seite neu laden", gps_fix_pc:"[Computer]\n1. Symbol links neben der Adressleiste → Standort → „Zulassen“\n2. Windows: Einstellungen → Datenschutz und Sicherheit → Standort einschalten\n3. Seite neu laden", gps_help_retry:"Erneut versuchen", gps_help_close:"Schließen",
@@ -2241,6 +2277,7 @@ de: {
 },
 ru: {
   gps_waiting:'📡 Ожидание GPS', gps_error:'📡 Ошибка GPS', gps_accuracy:'📡 Точность ±{m}м',
+  style_marks_label:"Подписи и значки", style_label_all:"Показать всё", style_label_names:"Только места, дороги и станции", style_label_none:"Скрыть всё",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Настройки → Конфиденциальность и безопасность → включите Службы геолокации\n2. В списке на том же экране: «{app}» → «При использовании приложения»\n3. Перезагрузите эту страницу в {app}",
   reach_arrived:"Прибытие: {name}", reach_next:"Далее: {name}", reach_goal:"Финиш", notif_channel_name:"Уведомления о прибытии", bg_nav_message:"Навигация: используется ваше местоположение",
   gps_err_denied:"📡 Геопозиция запрещена (нажмите)", gps_err_unavailable:"📡 Геопозиция недоступна (нажмите)", gps_err_timeout:"📡 Время ожидания GPS истекло (нажмите)", gps_help_title:"Не удаётся определить местоположение", gps_why_denied:"Этому приложению не разрешено использовать геопозицию.", gps_why_unavailable:"Геолокация на устройстве выключена или здесь нет сигнала.", gps_why_timeout:"Не удалось вовремя определить местоположение. Попробуйте снова там, где видно небо.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Настройки → Конфиденциальность и безопасность → включите Службы геолокации\n2. На том же экране: «Веб-сайты Safari» → «При использовании приложения»\n3. В Safari нажмите кнопку слева от адресной строки → Настройки веб-сайта → Геопозиция → «Разрешить»\n4. Перезагрузите страницу", gps_fix_ios_line:"[iPhone (открыто внутри LINE)]\n1. Настройки → Конфиденциальность и безопасность → Службы геолокации → LINE → «При использовании приложения»\n2. Или откройте в Safari через меню в правом верхнем углу\n3. Перезагрузите страницу", gps_fix_android_app:"[Приложение Android]\n1. Включите геолокацию в быстрых настройках\n2. Настройки → Приложения → MICHI-SHIRUBE → Разрешения → Местоположение → «Разрешить только во время использования»\n3. Нажмите «Повторить» ниже", gps_fix_android_browser:"[Android (Chrome и др.)]\n1. Включите геолокацию в быстрых настройках\n2. Значок слева от адресной строки → Разрешения → Местоположение → «Разрешить»\n3. Перезагрузите страницу", gps_fix_android_line:"[Android (открыто внутри LINE)]\n1. Настройки → Приложения → LINE → Разрешения → Местоположение → «Разрешить только во время использования»\n2. Или откройте в браузере через меню в правом верхнем углу\n3. Перезагрузите страницу", gps_fix_pc:"[Компьютер]\n1. Значок слева от адресной строки → Местоположение → «Разрешить»\n2. Windows: Параметры → Конфиденциальность и защита → включите Расположение\n3. Перезагрузите страницу", gps_help_retry:"Повторить", gps_help_close:"Закрыть",
@@ -2298,6 +2335,7 @@ ru: {
 },
 pt: {
   gps_waiting:'📡 Aguardando GPS', gps_error:'📡 Falha no GPS', gps_accuracy:'📡 Precisão ±{m}m',
+  style_marks_label:"Textos e ícones", style_label_all:"Mostrar tudo", style_label_names:"Só lugares, ruas e estações", style_label_none:"Ocultar tudo",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Ajustes → Privacidade e Segurança → ative Serviços de Localização\n2. Na lista da mesma tela: «{app}» → «Durante o Uso do App»\n3. Recarregue esta página no {app}",
   reach_arrived:"Chegada: {name}", reach_next:"Próximo: {name}", reach_goal:"Destino", notif_channel_name:"Chegadas da navegação", bg_nav_message:"Navegando: usando sua localização",
   gps_err_denied:"📡 Localização não permitida (toque)", gps_err_unavailable:"📡 Localização indisponível (toque)", gps_err_timeout:"📡 Tempo do GPS esgotado (toque)", gps_help_title:"Não foi possível obter sua localização", gps_why_denied:"Este app não tem permissão para usar sua localização.", gps_why_unavailable:"A localização do aparelho está desativada ou não há sinal aqui.", gps_why_timeout:"Sua localização não foi encontrada a tempo. Tente de novo onde dê para ver o céu.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Ajustes → Privacidade e Segurança → ative Serviços de Localização\n2. Na mesma tela: «Sites do Safari» → «Durante o Uso do App»\n3. No Safari, toque no botão à esquerda da barra de endereço → Ajustes do Site → Localização → «Permitir»\n4. Recarregue a página", gps_fix_ios_line:"[iPhone (aberto dentro do LINE)]\n1. Ajustes → Privacidade e Segurança → Serviços de Localização → LINE → «Durante o Uso do App»\n2. Ou abra no Safari pelo menu no canto superior direito\n3. Recarregue a página", gps_fix_android_app:"[App Android]\n1. Ative a localização nas configurações rápidas\n2. Configurações → Apps → MICHI-SHIRUBE → Permissões → Local → «Permitir apenas durante o uso do app»\n3. Toque em «Tentar de novo» abaixo", gps_fix_android_browser:"[Android (Chrome etc.)]\n1. Ative a localização nas configurações rápidas\n2. Toque no ícone à esquerda da barra de endereço → Permissões → Local → «Permitir»\n3. Recarregue a página", gps_fix_android_line:"[Android (aberto dentro do LINE)]\n1. Configurações → Apps → LINE → Permissões → Local → «Permitir apenas durante o uso do app»\n2. Ou abra no navegador pelo menu no canto superior direito\n3. Recarregue a página", gps_fix_pc:"[Computador]\n1. Clique no ícone à esquerda da barra de endereço → Local → «Permitir»\n2. No Windows: Configurações → Privacidade e segurança → ative Localização\n3. Recarregue a página", gps_help_retry:"Tentar de novo", gps_help_close:"Fechar",
@@ -2355,6 +2393,7 @@ pt: {
 },
 ar: {
   gps_waiting:'📡 في انتظار GPS', gps_error:'📡 فشل GPS', gps_accuracy:'📡 الدقة ±{m} م',
+  style_marks_label:"النصوص والرموز", style_label_all:"إظهار الكل", style_label_names:"أسماء الأماكن والطرق والمحطات فقط", style_label_none:"إخفاء الكل",
   gps_fix_ios_other:"[iPhone ({app})]\n1. الإعدادات ← الخصوصية والأمن ← شغّل خدمات الموقع\n2. من القائمة في الشاشة نفسها: «{app}» ← «أثناء استخدام التطبيق»\n3. أعد تحميل هذه الصفحة في {app}",
   reach_arrived:"تم الوصول: {name}", reach_next:"التالي: {name}", reach_goal:"الوجهة", notif_channel_name:"إشعارات الوصول أثناء الملاحة", bg_nav_message:"جارٍ الملاحة: يتم استخدام موقعك",
   gps_err_denied:"📡 الموقع غير مسموح (اضغط)", gps_err_unavailable:"📡 الموقع غير متاح (اضغط)", gps_err_timeout:"📡 انتهت مهلة GPS (اضغط)", gps_help_title:"تعذّر تحديد موقعك", gps_why_denied:"هذا التطبيق غير مسموح له باستخدام موقعك.", gps_why_unavailable:"خدمة الموقع في الجهاز متوقفة، أو لا توجد إشارة هنا.", gps_why_timeout:"لم يُعثر على موقعك في الوقت المحدد. حاول مرة أخرى في مكان ترى فيه السماء.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. الإعدادات ← الخصوصية والأمن ← شغّل خدمات الموقع\n2. في الشاشة نفسها: «مواقع Safari» ← «أثناء استخدام التطبيق»\n3. في Safari اضغط الزر يسار شريط العنوان ← إعدادات موقع الويب ← الموقع ← «سماح»\n4. أعد تحميل الصفحة", gps_fix_ios_line:"[iPhone (مفتوح داخل LINE)]\n1. الإعدادات ← الخصوصية والأمن ← خدمات الموقع ← LINE ← «أثناء استخدام التطبيق»\n2. أو افتحه في Safari من القائمة أعلى اليمين\n3. أعد تحميل الصفحة", gps_fix_android_app:"[تطبيق Android]\n1. شغّل الموقع من الإعدادات السريعة\n2. الإعدادات ← التطبيقات ← MICHI-SHIRUBE ← الأذونات ← الموقع ← «السماح فقط أثناء استخدام التطبيق»\n3. اضغط «إعادة المحاولة» بالأسفل", gps_fix_android_browser:"[Android (Chrome وغيره)]\n1. شغّل الموقع من الإعدادات السريعة\n2. اضغط الأيقونة يسار شريط العنوان ← الأذونات ← الموقع ← «سماح»\n3. أعد تحميل الصفحة", gps_fix_android_line:"[Android (مفتوح داخل LINE)]\n1. الإعدادات ← التطبيقات ← LINE ← الأذونات ← الموقع ← «السماح فقط أثناء استخدام التطبيق»\n2. أو افتحه في المتصفح من القائمة أعلى اليمين\n3. أعد تحميل الصفحة", gps_fix_pc:"[الكمبيوتر]\n1. اضغط الأيقونة يسار شريط العنوان ← الموقع ← «سماح»\n2. في Windows: الإعدادات ← الخصوصية والأمان ← شغّل الموقع\n3. أعد تحميل الصفحة", gps_help_retry:"إعادة المحاولة", gps_help_close:"إغلاق",
@@ -2412,6 +2451,7 @@ ar: {
 },
 it: {
   gps_waiting:'📡 In attesa del GPS', gps_error:'📡 GPS non riuscito', gps_accuracy:'📡 Precisione ±{m}m',
+  style_marks_label:"Testi e icone", style_label_all:"Mostra tutto", style_label_names:"Solo luoghi, strade e stazioni", style_label_none:"Nascondi tutto",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Impostazioni → Privacy e sicurezza → attiva Localizzazione\n2. Nell’elenco della stessa schermata: «{app}» → «Mentre usi l’app»\n3. Ricarica questa pagina in {app}",
   reach_arrived:"Arrivato: {name}", reach_next:"Prossimo: {name}", reach_goal:"Arrivo", notif_channel_name:"Arrivi della navigazione", bg_nav_message:"Navigazione: posizione in uso",
   gps_err_denied:"📡 Posizione non consentita (tocca)", gps_err_unavailable:"📡 Posizione non disponibile (tocca)", gps_err_timeout:"📡 Tempo GPS scaduto (tocca)", gps_help_title:"Impossibile ottenere la tua posizione", gps_why_denied:"Questa app non ha il permesso di usare la tua posizione.", gps_why_unavailable:"La posizione del dispositivo è disattivata o qui non c’è segnale.", gps_why_timeout:"La posizione non è stata trovata in tempo. Riprova in un punto da cui si vede il cielo.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Impostazioni → Privacy e sicurezza → attiva Localizzazione\n2. Nella stessa schermata: «Siti web di Safari» → «Mentre usi l’app»\n3. In Safari tocca il pulsante a sinistra della barra degli indirizzi → Impostazioni sito web → Posizione → «Consenti»\n4. Ricarica la pagina", gps_fix_ios_line:"[iPhone (aperto dentro LINE)]\n1. Impostazioni → Privacy e sicurezza → Localizzazione → LINE → «Mentre usi l’app»\n2. Oppure aprilo in Safari dal menu in alto a destra\n3. Ricarica la pagina", gps_fix_android_app:"[App Android]\n1. Attiva la posizione dalle impostazioni rapide\n2. Impostazioni → App → MICHI-SHIRUBE → Autorizzazioni → Posizione → «Consenti solo mentre l’app è in uso»\n3. Premi «Riprova» qui sotto", gps_fix_android_browser:"[Android (Chrome ecc.)]\n1. Attiva la posizione dalle impostazioni rapide\n2. Tocca l’icona a sinistra della barra degli indirizzi → Autorizzazioni → Posizione → «Consenti»\n3. Ricarica la pagina", gps_fix_android_line:"[Android (aperto dentro LINE)]\n1. Impostazioni → App → LINE → Autorizzazioni → Posizione → «Consenti solo mentre l’app è in uso»\n2. Oppure aprilo nel browser dal menu in alto a destra\n3. Ricarica la pagina", gps_fix_pc:"[Computer]\n1. Clicca l’icona a sinistra della barra degli indirizzi → Posizione → «Consenti»\n2. Su Windows: Impostazioni → Privacy e sicurezza → attiva Posizione\n3. Ricarica la pagina", gps_help_retry:"Riprova", gps_help_close:"Chiudi",
@@ -2469,6 +2509,7 @@ it: {
 },
 id: {
   gps_waiting:'📡 Menunggu GPS', gps_error:'📡 GPS gagal', gps_accuracy:'📡 Akurasi ±{m}m',
+  style_marks_label:"Teks & ikon", style_label_all:"Tampilkan semua", style_label_names:"Hanya nama tempat, jalan & stasiun", style_label_none:"Sembunyikan semua",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Pengaturan → Privasi & Keamanan → nyalakan Layanan Lokasi\n2. Di daftar pada layar yang sama: «{app}» → «Saat Menggunakan App»\n3. Muat ulang halaman ini di {app}",
   reach_arrived:"Tiba: {name}", reach_next:"Berikutnya: {name}", reach_goal:"Tujuan", notif_channel_name:"Notifikasi tiba saat navigasi", bg_nav_message:"Navigasi: menggunakan lokasi Anda",
   gps_err_denied:"📡 Lokasi tidak diizinkan (ketuk)", gps_err_unavailable:"📡 Lokasi tidak tersedia (ketuk)", gps_err_timeout:"📡 Waktu GPS habis (ketuk)", gps_help_title:"Tidak bisa mendapatkan lokasi Anda", gps_why_denied:"Aplikasi ini tidak diizinkan menggunakan lokasi Anda.", gps_why_unavailable:"Lokasi perangkat dimatikan, atau tidak ada sinyal di sini.", gps_why_timeout:"Lokasi tidak ditemukan tepat waktu. Coba lagi di tempat yang terlihat langit.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Pengaturan → Privasi & Keamanan → nyalakan Layanan Lokasi\n2. Di layar yang sama: «Situs Web Safari» → «Saat Menggunakan App»\n3. Di Safari, ketuk tombol di kiri bilah alamat → Pengaturan Situs Web → Lokasi → «Izinkan»\n4. Muat ulang halaman", gps_fix_ios_line:"[iPhone (dibuka di dalam LINE)]\n1. Pengaturan → Privasi & Keamanan → Layanan Lokasi → LINE → «Saat Menggunakan App»\n2. Atau buka di Safari dari menu kanan atas\n3. Muat ulang halaman", gps_fix_android_app:"[Aplikasi Android]\n1. Nyalakan Lokasi di setelan cepat\n2. Setelan → Aplikasi → MICHI-SHIRUBE → Izin → Lokasi → «Izinkan hanya saat aplikasi digunakan»\n3. Tekan «Coba lagi» di bawah", gps_fix_android_browser:"[Android (Chrome, dll.)]\n1. Nyalakan Lokasi di setelan cepat\n2. Ketuk ikon di kiri bilah alamat → Izin → Lokasi → «Izinkan»\n3. Muat ulang halaman", gps_fix_android_line:"[Android (dibuka di dalam LINE)]\n1. Setelan → Aplikasi → LINE → Izin → Lokasi → «Izinkan hanya saat aplikasi digunakan»\n2. Atau buka di browser dari menu kanan atas\n3. Muat ulang halaman", gps_fix_pc:"[Komputer]\n1. Klik ikon di kiri bilah alamat → Lokasi → «Izinkan»\n2. Windows: Pengaturan → Privasi & keamanan → nyalakan Lokasi\n3. Muat ulang halaman", gps_help_retry:"Coba lagi", gps_help_close:"Tutup",
@@ -2526,6 +2567,7 @@ id: {
 },
 vi: {
   gps_waiting:'📡 Đang chờ GPS', gps_error:'📡 GPS lỗi', gps_accuracy:'📡 Độ chính xác ±{m}m',
+  style_marks_label:"Chữ và biểu tượng", style_label_all:"Hiện tất cả", style_label_names:"Chỉ tên địa danh, đường và ga", style_label_none:"Ẩn tất cả",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Cài đặt → Quyền riêng tư & Bảo mật → bật Dịch vụ định vị\n2. Trong danh sách cùng màn hình: «{app}» → «Khi dùng ứng dụng»\n3. Tải lại trang này trong {app}",
   reach_arrived:"Đã đến: {name}", reach_next:"Tiếp theo: {name}", reach_goal:"Đích", notif_channel_name:"Thông báo đến nơi khi dẫn đường", bg_nav_message:"Đang dẫn đường: đang dùng vị trí của bạn",
   gps_err_denied:"📡 Chưa cho phép vị trí (chạm)", gps_err_unavailable:"📡 Không lấy được vị trí (chạm)", gps_err_timeout:"📡 GPS hết thời gian (chạm)", gps_help_title:"Không lấy được vị trí hiện tại", gps_why_denied:"Ứng dụng này chưa được phép dùng vị trí của bạn.", gps_why_unavailable:"Vị trí trên thiết bị đang tắt, hoặc ở đây không có tín hiệu.", gps_why_timeout:"Không tìm được vị trí kịp thời. Hãy thử lại ở nơi nhìn thấy bầu trời.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Cài đặt → Quyền riêng tư & Bảo mật → bật Dịch vụ định vị\n2. Trên cùng màn hình: «Trang web Safari» → «Khi dùng ứng dụng»\n3. Trong Safari, chạm nút bên trái thanh địa chỉ → Cài đặt trang web → Vị trí → «Cho phép»\n4. Tải lại trang", gps_fix_ios_line:"[iPhone (đang mở trong LINE)]\n1. Cài đặt → Quyền riêng tư & Bảo mật → Dịch vụ định vị → LINE → «Khi dùng ứng dụng»\n2. Hoặc mở bằng Safari từ menu góc trên bên phải\n3. Tải lại trang", gps_fix_android_app:"[Ứng dụng Android]\n1. Bật Vị trí trong cài đặt nhanh\n2. Cài đặt → Ứng dụng → MICHI-SHIRUBE → Quyền → Vị trí → «Chỉ cho phép khi dùng ứng dụng»\n3. Nhấn «Thử lại» bên dưới", gps_fix_android_browser:"[Android (Chrome, v.v.)]\n1. Bật Vị trí trong cài đặt nhanh\n2. Chạm biểu tượng bên trái thanh địa chỉ → Quyền → Vị trí → «Cho phép»\n3. Tải lại trang", gps_fix_android_line:"[Android (đang mở trong LINE)]\n1. Cài đặt → Ứng dụng → LINE → Quyền → Vị trí → «Chỉ cho phép khi dùng ứng dụng»\n2. Hoặc mở bằng trình duyệt từ menu góc trên bên phải\n3. Tải lại trang", gps_fix_pc:"[Máy tính]\n1. Nhấp biểu tượng bên trái thanh địa chỉ → Vị trí → «Cho phép»\n2. Windows: Cài đặt → Quyền riêng tư & bảo mật → bật Vị trí\n3. Tải lại trang", gps_help_retry:"Thử lại", gps_help_close:"Đóng",
@@ -2783,6 +2825,10 @@ const MAP_HIDE_LABELS = [{elementType:'labels', stylers:[{visibility:'off'}]}];
 let currentMapStyle = localStorage.getItem('navi_map_style') || 'none';
 let mapHidePOI = localStorage.getItem('navi_map_hide_poi') === '1';
 let mapHideLabels = localStorage.getItem('navi_map_hide_labels') === '1';
+// G版：文字とマーク（all＝全部表示／names＝地名・道路名・駅名だけ／none＝全部消す）
+// まだ選んだことがない人は、今の版の2つのチェックから引き継ぐ（文字を消す→全部消す、店などを消すだけ→地名・道路名・駅名だけ）
+let mapLabelMode = localStorage.getItem('navi_map_label_mode') || (mapHideLabels ? 'none' : (mapHidePOI ? 'names' : 'all'));
+if(!['all','names','none'].includes(mapLabelMode)) mapLabelMode = 'all';
 
 // 選んだものを重ねて1つのスタイルにする
 function buildMapStyles(){
@@ -2819,15 +2865,24 @@ function setMapStyleFlags(){
   rebuildGoogleLayer();
 }
 
+function setMapLabelMode(v){
+  mapLabelMode = ['all','names','none'].includes(v) ? v : 'all';
+  localStorage.setItem('navi_map_label_mode', mapLabelMode);
+  if(!usingGoogleMap){ alert(t('google_map_not_loaded')); return; }
+  rebuildGoogleLayer();
+}
+
 function setMapStyleLabels(){
   const sel = document.getElementById('map-style-select');
   if(!sel) return;
   const keys = ['style_normal','style_mono','style_dark','style_night'];
   keys.forEach((k,i)=>{ sel.options[i].textContent = t(k); });
   sel.value = MAP_BASE_STYLES[currentMapStyle] ? currentMapStyle : 'none';
-  const poi = document.getElementById('map-hide-poi'), lab = document.getElementById('map-hide-labels');
-  if(poi) poi.checked = mapHidePOI;
-  if(lab) lab.checked = mapHideLabels;
+  const lm = document.getElementById('map-label-mode');
+  if(lm){
+    ['style_label_all','style_label_names','style_label_none'].forEach((k,i)=>{ lm.options[i].textContent = t(k); });
+    lm.value = mapLabelMode;
+  }
 }
 
 function setMapType(type){
