@@ -1000,13 +1000,13 @@ body { background:#08090d; color:#e9e9ee; font-family:'Helvetica Neue',Arial,san
 
 /* パネルが隠れている時に画面の端に出るバー */
 #panel-edge { display:none; position:fixed; left:0; right:0; bottom:0; z-index:1250;
-  height:calc(34px + env(safe-area-inset-bottom,0px)); padding-bottom:env(safe-area-inset-bottom,0px);
+  height:calc(34px + var(--sab, env(safe-area-inset-bottom,0px))); padding-bottom:var(--sab, env(safe-area-inset-bottom,0px));
   background:rgba(14,16,20,0.72); border-top:1px solid rgba(255,159,28,0.55);
   color:#ff9f1c; font-size:13px; font-weight:700; letter-spacing:0.08em;
   align-items:center; justify-content:center; gap:10px; cursor:pointer; user-select:none; touch-action:none; }
 #panel-edge:active { background:rgba(14,16,20,0.95); }
 body.panel-hidden #panel-edge { display:flex; }
-#play-bar { display:none; position:absolute; left:60px; right:calc(12px + var(--panel-w,0px) + var(--edge-w,0px)); bottom:calc(12px + var(--gm-attr-h,0px) + env(safe-area-inset-bottom,0px) + var(--panel-h,0px) + var(--edge-h,0px)); z-index:1500; background:rgba(15,15,15,0.96); border:1px solid #ff9f1c; border-radius:12px; padding:10px 12px; box-shadow:0 4px 16px rgba(0,0,0,0.6); max-width:560px; margin-left:auto; }
+#play-bar { display:none; position:absolute; left:60px; right:calc(12px + var(--panel-w,0px) + var(--edge-w,0px)); bottom:calc(12px + var(--gm-attr-h,0px) + var(--sab, env(safe-area-inset-bottom,0px)) + var(--panel-h,0px) + var(--edge-h,0px)); z-index:1500; background:rgba(15,15,15,0.96); border:1px solid #ff9f1c; border-radius:12px; padding:10px 12px; box-shadow:0 4px 16px rgba(0,0,0,0.6); max-width:560px; margin-left:auto; }
 #play-bar.show { display:block; }
 /* ===== 録画モード：地図とルート再生だけを映す ===== */
 body.rec-mode #play-bar, body.rec-mode #preview-bar, body.rec-mode #panel-edge, body.rec-mode #gps-badge,
@@ -1064,13 +1064,13 @@ body.rec-mode #rec-exit { display:block; }
   color:#e9e9ee; font-size:14px; padding:10px 16px; border-radius:20px; transition:opacity .4s ease; white-space:nowrap; }
 #rec-hint.hide { opacity:0; }
 .play-ctl { background:#181b23; border:1px solid #343b48; color:#ff9f1c; border-radius:8px; font-size:16px; padding:5px 10px; cursor:pointer; flex-shrink:0; }
-#preview-bar { display:none; position:absolute; left:60px; right:calc(12px + var(--panel-w,0px) + var(--edge-w,0px)); bottom:calc(12px + var(--gm-attr-h,0px) + env(safe-area-inset-bottom,0px) + var(--panel-h,0px) + var(--edge-h,0px)); z-index:1500; background:rgba(15,20,25,0.96); border:1px solid #2a6a8a; border-radius:12px; padding:12px; box-shadow:0 4px 16px rgba(0,0,0,0.6); max-width:520px; margin-left:auto; }
+#preview-bar { display:none; position:absolute; left:60px; right:calc(12px + var(--panel-w,0px) + var(--edge-w,0px)); bottom:calc(12px + var(--gm-attr-h,0px) + var(--sab, env(safe-area-inset-bottom,0px)) + var(--panel-h,0px) + var(--edge-h,0px)); z-index:1500; background:rgba(15,20,25,0.96); border:1px solid #2a6a8a; border-radius:12px; padding:12px; box-shadow:0 4px 16px rgba(0,0,0,0.6); max-width:520px; margin-left:auto; }
 #preview-bar.show { display:block; }
-#gps-badge { position:absolute; top:calc(8px + env(safe-area-inset-top,0px)); left:calc(8px + env(safe-area-inset-left,0px)); z-index:1000; background:rgba(0,0,0,0.75); border-radius:20px; padding:5px 10px; font-size:11px; color:#6a6a76; pointer-events:none; }
+#gps-badge { position:absolute; top:calc(8px + var(--sat, env(safe-area-inset-top,0px))); left:calc(8px + env(safe-area-inset-left,0px)); z-index:1000; background:rgba(0,0,0,0.75); border-radius:20px; padding:5px 10px; font-size:11px; color:#6a6a76; pointer-events:none; }
 #gps-badge.good { color:#44cc44; }
 #gps-badge.bad { color:#cc4444; }
 #gps-badge.tappable { pointer-events:auto; cursor:pointer; border:1px solid #cc4444; }
-#compass-debug { display:none; position:absolute; top:calc(40px + env(safe-area-inset-top,0px)); left:calc(8px + env(safe-area-inset-left,0px)); z-index:1000; background:rgba(0,0,0,0.75); border-radius:10px; padding:4px 8px; font-size:10px; color:#ffd27a; pointer-events:none; font-family:monospace; }
+#compass-debug { display:none; position:absolute; top:calc(40px + var(--sat, env(safe-area-inset-top,0px))); left:calc(8px + env(safe-area-inset-left,0px)); z-index:1000; background:rgba(0,0,0,0.75); border-radius:10px; padding:4px 8px; font-size:10px; color:#ffd27a; pointer-events:none; font-family:monospace; }
 #reach-card { display:none; position:fixed; z-index:1500; box-sizing:border-box; background:rgba(18,20,26,0.96); border:1px solid #343b48; border-left:4px solid #ff9f1c; border-radius:12px; padding:9px 10px 9px 12px; color:#e9e9ee; box-shadow:0 4px 16px rgba(0,0,0,0.5); align-items:center; gap:10px; cursor:pointer; }
 #reach-card .rc-text { flex:1; min-width:0; }
 #reach-card .rc-line { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -1078,12 +1078,12 @@ body.rec-mode #rec-exit { display:block; }
 #reach-card .rc-memo { font-size:12px; color:#c9c9d2; margin-top:2px; }
 #reach-card .rc-next { font-size:12px; color:#9a9aa6; margin-top:2px; }
 #reach-card img { width:52px; height:52px; border-radius:8px; object-fit:cover; border:1px solid #343b48; flex-shrink:0; }
-#photo-card { display:none; position:fixed; z-index:1400; top:calc(var(--ad-shift,0px) + env(safe-area-inset-top,0px) + 84px); left:50%; transform:translateX(-50%); width:min(340px, calc(100vw - 24px)); box-sizing:border-box; background:#12141a; border:1px solid #ff9f1c; border-radius:12px; padding:10px 12px 12px; color:#e9e9ee; box-shadow:0 6px 20px rgba(0,0,0,0.55); }
+#photo-card { display:none; position:fixed; z-index:1400; top:calc(var(--ad-shift,0px) + var(--sat, env(safe-area-inset-top,0px)) + 84px); left:50%; transform:translateX(-50%); width:min(340px, calc(100vw - 24px)); box-sizing:border-box; background:#12141a; border:1px solid #ff9f1c; border-radius:12px; padding:10px 12px 12px; color:#e9e9ee; box-shadow:0 6px 20px rgba(0,0,0,0.55); }
 #photo-card .pc-title { font-size:14px; font-weight:700; color:#ff9f1c; padding-right:34px; word-break:break-word; }
 #photo-card .pc-memo { font-size:12px; color:#c9c9d2; margin-top:3px; white-space:pre-wrap; word-break:break-word; max-height:4.8em; overflow-y:auto; }
 #photo-card img { display:block; width:100%; max-height:45vh; object-fit:contain; border-radius:8px; margin-top:8px; background:#08090d; cursor:zoom-in; }
 #photo-card .pc-close { position:absolute; top:6px; right:6px; width:30px; height:30px; border-radius:50%; border:1px solid #343b48; background:#1b1f28; color:#e9e9ee; font-size:15px; line-height:1; cursor:pointer; }
-@media (min-aspect-ratio:6/5) and (max-width:1024px) {
+@media (orientation:landscape) and (max-width:1024px) {
   #photo-card { top:calc(var(--ad-shift,0px) + 8px); left:calc(60px + env(safe-area-inset-left,0px)); transform:none; width:min(300px, 42vw); }
   #photo-card img { max-height:calc(100dvh - var(--ad-shift,0px) - 110px); }
 }
@@ -1095,7 +1095,7 @@ body.rec-mode #rec-exit { display:block; }
 #gps-help .gh-retry { width:100%; padding:10px; border-radius:8px; border:1px solid #ff9f1c; background:#ff9f1c; color:#000; font-weight:700; font-size:13px; cursor:pointer; }
 #gps-help .gh-close { width:100%; margin-top:8px; padding:9px; border-radius:8px; border:1px solid #343b48; background:transparent; color:#9a9aa6; font-size:12px; cursor:pointer; }
 
-#follow-btn { position:absolute; touch-action:manipulation; pointer-events:auto; bottom:calc(12px + var(--gm-attr-h,0px) + env(safe-area-inset-bottom,0px) + var(--panel-h,0px) + var(--edge-h,0px)); right:calc(12px + var(--panel-w,0px) + var(--edge-w,0px)); z-index:1000; width:44px; height:44px; border-radius:50%; border:2px solid #343b48; background:rgba(0,0,0,0.8); color:#7e7e8b; font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+#follow-btn { position:absolute; touch-action:manipulation; pointer-events:auto; bottom:calc(12px + var(--gm-attr-h,0px) + var(--sab, env(safe-area-inset-bottom,0px)) + var(--panel-h,0px) + var(--edge-h,0px)); right:calc(12px + var(--panel-w,0px) + var(--edge-w,0px)); z-index:1000; width:44px; height:44px; border-radius:50%; border:2px solid #343b48; background:rgba(0,0,0,0.8); color:#7e7e8b; font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
 #follow-btn.active { background:#ff9f1c; color:#000; border-color:#ff9f1c; }
 .maptype-btn { background:#181b23; border:1px solid #343b48; color:#9a9aa6; }
 .maptype-btn.active { background:#ff9f1c; border-color:#ff9f1c; color:#000; font-weight:700; }
@@ -1103,7 +1103,7 @@ body.rec-mode #rec-exit { display:block; }
 /* パネル（地図の上に重ねる） */
 #bottom { position:fixed; left:0; right:0; bottom:0; z-index:1200; max-height:62dvh;
   background:#0e1014; border-top:2px solid #ff9f1c; display:flex; flex-direction:column;
-  padding-bottom:env(safe-area-inset-bottom,0px);
+  padding-bottom:var(--sab, env(safe-area-inset-bottom,0px));
   transition:transform 0.22s ease; }
 /* 画面下端の安全領域まで同じ色で埋めて、黒い帯が出ないようにする */
 #bottom::after { content:''; position:absolute; left:0; right:0; top:100%; height:140px; background:#0e1014; pointer-events:none; }
@@ -1264,12 +1264,11 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
 .color-cell.selected { border-color:#ff9f1c; box-shadow:0 0 0 2px #ff9f1c; }
 
 /* スマホ横向き */
-/* 横画面（右パネル）：横幅が高さの1.2倍以上の時だけ（Fold の内側のようなほぼ正方形の画面は下パネル） */
-@media (min-aspect-ratio:6/5) and (max-width:1024px) {
+@media (orientation:landscape) and (max-width:1024px) {
   #bottom { left:auto; top:var(--ad-shift,0px); bottom:0; right:0; width:calc(264px + env(safe-area-inset-right,0px)); max-height:none;
     border-top:none; border-left:2px solid #ff9f1c;
     overflow-y:auto; -webkit-overflow-scrolling:touch;
-    padding-right:env(safe-area-inset-right,0px); padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+    padding-right:env(safe-area-inset-right,0px); padding-top:var(--sat, env(safe-area-inset-top,0px)); padding-bottom:var(--sab, env(safe-area-inset-bottom,0px));
   }
   #bottom::after { left:100%; right:auto; top:0; bottom:0; height:auto; width:140px; }
   body.panel-hidden #bottom { transform:translateX(105%); }
@@ -1461,8 +1460,8 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
   <div id="compass-debug"></div>
   <button id="follow-btn" onclick="event.stopPropagation(); toggleFollow();"
     ontouchend="event.stopPropagation();" ontouchstart="event.stopPropagation();"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="display:block;margin:auto;"><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-  <button id="map-controls-btn" onclick="event.stopPropagation(); toggleMapControlsPanel();" ontouchstart="event.stopPropagation();" ontouchend="event.stopPropagation();" style="position:absolute;touch-action:manipulation;bottom:calc(12px + var(--gm-attr-h,0px) + env(safe-area-inset-bottom,0px) + var(--panel-h,0px) + var(--edge-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;width:40px;height:40px;border-radius:8px;border:2px solid #343b48;background:rgba(0,0,0,0.85);color:#e9e9ee;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">🗺️</button>
-  <div id="map-controls-panel" style="display:none;position:absolute;max-height:calc(100dvh - var(--ad-shift,0px) - 70px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - var(--panel-h,0px) - var(--edge-h,0px));overflow-y:auto;-webkit-overflow-scrolling:touch;bottom:calc(58px + env(safe-area-inset-bottom,0px) + var(--panel-h,0px) + var(--edge-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;background:rgba(20,20,20,0.95);border:1px solid #343b48;border-radius:10px;padding:12px;width:200px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
+  <button id="map-controls-btn" onclick="event.stopPropagation(); toggleMapControlsPanel();" ontouchstart="event.stopPropagation();" ontouchend="event.stopPropagation();" style="position:absolute;touch-action:manipulation;bottom:calc(12px + var(--gm-attr-h,0px) + var(--sab, env(safe-area-inset-bottom,0px)) + var(--panel-h,0px) + var(--edge-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;width:40px;height:40px;border-radius:8px;border:2px solid #343b48;background:rgba(0,0,0,0.85);color:#e9e9ee;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">🗺️</button>
+  <div id="map-controls-panel" style="display:none;position:absolute;max-height:calc(100dvh - var(--ad-shift,0px) - 70px - var(--sat, env(safe-area-inset-top,0px)) - var(--sab, env(safe-area-inset-bottom,0px)) - var(--panel-h,0px) - var(--edge-h,0px));overflow-y:auto;-webkit-overflow-scrolling:touch;bottom:calc(58px + var(--sab, env(safe-area-inset-bottom,0px)) + var(--panel-h,0px) + var(--edge-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;background:rgba(20,20,20,0.95);border:1px solid #343b48;border-radius:10px;padding:12px;width:200px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
     <div style="font-size:10px;color:#7e7e8b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;" data-i18n="map_type_label">地図の種類</div>
     <div style="display:flex;gap:6px;margin-bottom:14px;">
       <button class="maptype-btn active" id="maptype-roadmap" onclick="setMapType('roadmap')" style="flex:1;padding:6px 4px;font-size:11px;border-radius:6px;cursor:pointer;" data-i18n="map_type_default">標準</button>
@@ -1551,7 +1550,7 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
 </div>
 
 <!-- ユーザー設定ダイアログ -->
-<div id="username-dialog" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:99998;align-items:flex-start;justify-content:center;overflow-y:auto;padding:calc(16px + env(safe-area-inset-top,0px)) 0 calc(24px + env(safe-area-inset-bottom,0px));">
+<div id="username-dialog" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:99998;align-items:flex-start;justify-content:center;overflow-y:auto;padding:calc(16px + var(--sat, env(safe-area-inset-top,0px))) 0 calc(24px + var(--sab, env(safe-area-inset-bottom,0px)));">
   <div style="background:#12141a;border:1px solid #262b36;border-radius:12px;padding:24px;width:340px;max-width:90vw;margin:auto;">
     <h3 style="font-size:14px;color:#ff9f1c;margin-bottom:16px;" data-i18n="settings_title">ユーザー設定</h3>
 
@@ -1729,7 +1728,7 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
 <!-- 写真の拡大表示 -->
 <div id="photo-viewer" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.96);z-index:12000;align-items:center;justify-content:center;" onclick="closePhotoViewer()">
   <img id="photo-viewer-img" src="" alt="" style="max-width:100%;max-height:100%;object-fit:contain;">
-  <button onclick="closePhotoViewer()" style="position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:12px;background:rgba(0,0,0,0.6);border:1px solid #343b48;color:#e9e9ee;border-radius:50%;width:40px;height:40px;font-size:20px;cursor:pointer;">✕</button>
+  <button onclick="closePhotoViewer()" style="position:absolute;top:calc(12px + var(--sat, env(safe-area-inset-top,0px)));right:12px;background:rgba(0,0,0,0.6);border:1px solid #343b48;color:#e9e9ee;border-radius:50%;width:40px;height:40px;font-size:20px;cursor:pointer;">✕</button>
 </div>
 
 <!-- 区間の設定（移動手段と線の色） -->
@@ -3251,7 +3250,7 @@ if(canRotateMap){
 const zoomCtrlEl = document.querySelector('.leaflet-top.leaflet-right');
 if(zoomCtrlEl){
   zoomCtrlEl.style.marginRight = 'var(--panel-w, 0px)';
-  zoomCtrlEl.style.marginTop = 'env(safe-area-inset-top, 0px)';
+  zoomCtrlEl.style.marginTop = 'var(--sat, env(safe-area-inset-top,0px))';
   zoomCtrlEl.style.transition = 'margin 0.22s ease';
 }
 
@@ -3473,7 +3472,7 @@ function applyEditMode(){
 // 編集モードでない時に出す、見るだけの吹き出し
 // ===== 写真カード =====
 // 写真付きの吹き出しは、地図の枠に収まらず切れることがあるので、地図の外に出すカードにする
-// ・✕を押した時だけ閉じる（地図を動かす・パネルを開け閉めしても出たまま）
+// ・✕を押すか、カードの外を触ったら閉じる（写真を全画面で見ている間は閉じない）
 // ・別の写真を押すと入れ替わる。写真を押すと全画面で表示
 let photoCardFull = '', photoCardToken = 0;
 function showPhotoCard(title, memo, photo){
@@ -3492,6 +3491,13 @@ function showPhotoCard(title, memo, photo){
   }
   card.style.display = 'block';
 }
+document.addEventListener('pointerdown', e=>{
+  const card = document.getElementById('photo-card');
+  if(!card || card.style.display !== 'block') return;
+  const viewer = document.getElementById('photo-viewer');
+  if(card.contains(e.target) || (viewer && viewer.contains(e.target))) return;
+  closePhotoCard();
+}, true);
 function closePhotoCard(){
   photoCardToken++;
   const card = document.getElementById('photo-card'); if(card) card.style.display = 'none';
@@ -5278,7 +5284,7 @@ function placeReachCard(){
   if(panelOpen){
     const w = Math.min(420, W - 16);
     el.style.width = w + 'px';
-    el.style.bottom = `calc(8px + env(safe-area-inset-bottom, 0px) + ${safeB}px)`;
+    el.style.bottom = `calc(8px + var(--sab, env(safe-area-inset-bottom,0px)) + ${safeB}px)`;
     if(land) el.style.right = 'calc(8px + env(safe-area-inset-right, 0px))';
     else el.style.left = Math.round((W - w) / 2) + 'px';
     return;
@@ -8499,7 +8505,7 @@ let adBannerHeightDbg = 0;
   const run = () => {
     if(!document.body) return;
     if(!pEnvTop){
-      pEnvTop = probe('height', 'env(safe-area-inset-top,0px)'); pEnvBot = probe('height', 'env(safe-area-inset-bottom,0px)');
+      pEnvTop = probe('height', 'env(safe-area-inset-top)'); pEnvBot = probe('height', 'env(safe-area-inset-bottom)');
       pVarTop = probe('height', 'var(--safe-area-inset-top,0px)'); pVarBot = probe('height', 'var(--safe-area-inset-bottom,0px)');
       document.body.appendChild(box);
     }
@@ -8508,16 +8514,59 @@ let adBannerHeightDbg = 0;
     box.textContent =
       `env top ${pEnvTop.offsetHeight} / bottom ${pEnvBot.offsetHeight}\n` +
       `--safe-area top ${pVarTop.offsetHeight} / bottom ${pVarBot.offsetHeight}\n` +
-      `ad ${adBannerHeightDbg} / --ad-shift ${ad || '-'}\n` +
+      `ad ${adBannerHeightDbg} / --ad-shift ${ad || '-'} / margin ${bannerMargin()}\n` +
+      `inset-mode ${androidInsetMode} / --sat ${getComputedStyle(document.documentElement).getPropertyValue('--sat').trim() || '-'}\n` +
       `inner ${innerWidth}x${innerHeight} vv ${vv ? Math.round(vv.width) + 'x' + Math.round(vv.height) : '-'}\n` +
       `screen ${screen.width}x${screen.height} dpr ${devicePixelRatio}`;
   };
   setInterval(run, 1000);
 })();
 
+// ===== Android アプリの画面の余白 =====
+// Pixel などでは、アプリの画面がすでにステータスバー・ナビゲーションバーの内側に置かれているのに、
+// 画面の余白の値（env(safe-area-inset-*)）も報告されるため、そのまま使うと二重になって黒いすき間ができる。
+// 「画面の高さ − アプリの中の高さ」が上下の余白の合計とほぼ同じなら、余白は使い済みとみなして 0 にする。
+// 判定は、起動時と、画面そのものの大きさが変わった時（縦横の切り替え・Fold の開閉）だけ。キーボードで高さが変わった時は判定しない
+let androidInsetMode = false, envTopPx = 0, insetProbes = null, lastOrientKey = null;
+function isAndroidApp(){ return isNativeApp() && /Android/i.test(navigator.userAgent); }
+function updateInsetMode(){
+  if(!isAndroidApp() || !document.body) return;
+  if(!insetProbes){
+    const mk = side => { const d = document.createElement('div'); d.dataset.inset = side; d.style.cssText = `position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;height:env(safe-area-inset-${side});`; document.body.appendChild(d); return d; };
+    insetProbes = { top: mk('top'), bottom: mk('bottom') };
+  }
+  const top = insetProbes.top.offsetHeight, bot = insetProbes.bottom.offsetHeight;
+  envTopPx = top;
+  const consumed = screen.height - window.innerHeight;
+  androidInsetMode = (top + bot) > 0 && consumed >= (top + bot) - 6;
+  const st = document.documentElement.style;
+  if(androidInsetMode){ st.setProperty('--sat', '0px'); st.setProperty('--sab', '0px'); }
+  else { st.removeProperty('--sat'); st.removeProperty('--sab'); }
+  lastOrientKey = screen.width + 'x' + screen.height;
+}
+// 広告の部品は、バナーの上に「上の余白」を自分で足すので、二重になる時はその分だけ上へ戻す
+function bannerMargin(){ return (androidInsetMode && envTopPx) ? -Math.round(envTopPx) : 0; }
+// 縦横の切り替え・Fold の開閉で画面の大きさが変わった時：余白を判定し直し、広告を作り直す（広告の大きさは作った時の画面の幅で決まるため）
+let orientTimer = null;
+window.addEventListener('resize', ()=>{
+  if(!isAndroidApp()) return;
+  const key = screen.width + 'x' + screen.height;
+  if(key === lastOrientKey) return;
+  clearTimeout(orientTimer);
+  orientTimer = setTimeout(()=>{ updateInsetMode(); remakeBanner(); }, 300);
+});
+async function remakeBanner(){
+  const am = admob(); if(!am || !admobReady || !admobBannerMade) return;
+  const wasShown = admobBannerShown;
+  try{ await am.removeBanner(); }catch(e){ console.warn('バナーの削除失敗', e); }
+  admobBannerMade = false; admobBannerShown = false; setAdShift(0);
+  if(wasShown) refreshAdMobBanner();
+}
+updateInsetMode();
+
 function setAdShift(h){
   adBannerHeightDbg = h;
-  document.documentElement.style.setProperty('--ad-shift', h > 0 ? `calc(env(safe-area-inset-top,0px) + ${h}px)` : '0px');
+  document.documentElement.style.setProperty('--ad-shift', h > 0 ? `calc(var(--sat, env(safe-area-inset-top,0px)) + ${h}px)` : '0px');
   if(window.map) setTimeout(()=>{ map.invalidateSize(); if(typeof updatePanelMetrics === 'function') updatePanelMetrics(); }, 60);
 }
 
@@ -8549,7 +8598,8 @@ async function refreshAdMobBanner(){
       admobBannerShown = true;
       if(!admobBannerMade){
         admobBannerMade = true;
-        await am.showBanner({ adId:ADMOB_IDS.banner, adSize:'ADAPTIVE_BANNER', position:'TOP_CENTER', margin:0, isTesting:ADMOB_TESTING });
+        updateInsetMode();
+        await am.showBanner({ adId:ADMOB_IDS.banner, adSize:'ADAPTIVE_BANNER', position:'TOP_CENTER', margin:bannerMargin(), isTesting:ADMOB_TESTING });
       } else {
         await am.resumeBanner();
       }
@@ -8676,7 +8726,7 @@ const PANEL_STATES = ['full','list','hidden'];
 let panelState = 'full';
 
 function isLandscapePanel(){
-  return window.matchMedia('(min-aspect-ratio:6/5) and (max-width:1024px)').matches;
+  return window.matchMedia('(orientation:landscape) and (max-width:1024px)').matches;
 }
 
 function setPanelState(state){
