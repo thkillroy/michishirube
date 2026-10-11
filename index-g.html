@@ -1078,6 +1078,15 @@ body.rec-mode #rec-exit { display:block; }
 #reach-card .rc-memo { font-size:12px; color:#c9c9d2; margin-top:2px; }
 #reach-card .rc-next { font-size:12px; color:#9a9aa6; margin-top:2px; }
 #reach-card img { width:52px; height:52px; border-radius:8px; object-fit:cover; border:1px solid #343b48; flex-shrink:0; }
+#photo-card { display:none; position:fixed; z-index:1400; top:calc(var(--ad-shift,0px) + env(safe-area-inset-top,0px) + 84px); left:50%; transform:translateX(-50%); width:min(340px, calc(100vw - 24px)); box-sizing:border-box; background:#12141a; border:1px solid #ff9f1c; border-radius:12px; padding:10px 12px 12px; color:#e9e9ee; box-shadow:0 6px 20px rgba(0,0,0,0.55); }
+#photo-card .pc-title { font-size:14px; font-weight:700; color:#ff9f1c; padding-right:34px; word-break:break-word; }
+#photo-card .pc-memo { font-size:12px; color:#c9c9d2; margin-top:3px; white-space:pre-wrap; word-break:break-word; max-height:4.8em; overflow-y:auto; }
+#photo-card img { display:block; width:100%; max-height:45vh; object-fit:contain; border-radius:8px; margin-top:8px; background:#08090d; cursor:zoom-in; }
+#photo-card .pc-close { position:absolute; top:6px; right:6px; width:30px; height:30px; border-radius:50%; border:1px solid #343b48; background:#1b1f28; color:#e9e9ee; font-size:15px; line-height:1; cursor:pointer; }
+@media (min-aspect-ratio:6/5) and (max-width:1024px) {
+  #photo-card { top:calc(var(--ad-shift,0px) + 8px); left:calc(60px + env(safe-area-inset-left,0px)); transform:none; width:min(300px, 42vw); }
+  #photo-card img { max-height:calc(100dvh - var(--ad-shift,0px) - 110px); }
+}
 #gps-help { display:none; position:fixed; inset:0; z-index:10060; background:rgba(0,0,0,0.75); align-items:center; justify-content:center; padding:16px; }
 #gps-help .gh-card { width:100%; max-width:420px; max-height:90vh; overflow-y:auto; background:#12141a; border:1px solid #343b48; border-radius:14px; padding:16px; color:#e9e9ee; }
 #gps-help .gh-title { font-size:15px; font-weight:700; color:#ff9f1c; margin-bottom:8px; }
@@ -1255,7 +1264,8 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
 .color-cell.selected { border-color:#ff9f1c; box-shadow:0 0 0 2px #ff9f1c; }
 
 /* スマホ横向き */
-@media (orientation:landscape) and (max-width:1024px) {
+/* 横画面（右パネル）：横幅が高さの1.2倍以上の時だけ（Fold の内側のようなほぼ正方形の画面は下パネル） */
+@media (min-aspect-ratio:6/5) and (max-width:1024px) {
   #bottom { left:auto; top:var(--ad-shift,0px); bottom:0; right:0; width:calc(264px + env(safe-area-inset-right,0px)); max-height:none;
     border-top:none; border-left:2px solid #ff9f1c;
     overflow-y:auto; -webkit-overflow-scrolling:touch;
@@ -1340,6 +1350,12 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
     <div class="rc-line rc-next" id="rc-next"></div>
   </div>
   <img id="rc-photo" alt="" style="display:none;" onclick="event.stopPropagation(); openReachPhoto();">
+</div>
+<div id="photo-card">
+  <button class="pc-close" onclick="closePhotoCard()">✕</button>
+  <div class="pc-title" id="pc-title"></div>
+  <div class="pc-memo" id="pc-memo"></div>
+  <img id="pc-img" alt="" onclick="openPhotoViewer(photoCardFull)">
 </div>
 <div id="gps-help" onclick="if(event.target===this) closeGpsHelp()">
   <div class="gh-card">
@@ -1446,7 +1462,7 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
   <button id="follow-btn" onclick="event.stopPropagation(); toggleFollow();"
     ontouchend="event.stopPropagation();" ontouchstart="event.stopPropagation();"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="display:block;margin:auto;"><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
   <button id="map-controls-btn" onclick="event.stopPropagation(); toggleMapControlsPanel();" ontouchstart="event.stopPropagation();" ontouchend="event.stopPropagation();" style="position:absolute;touch-action:manipulation;bottom:calc(12px + var(--gm-attr-h,0px) + env(safe-area-inset-bottom,0px) + var(--panel-h,0px) + var(--edge-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;width:40px;height:40px;border-radius:8px;border:2px solid #343b48;background:rgba(0,0,0,0.85);color:#e9e9ee;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">🗺️</button>
-  <div id="map-controls-panel" style="display:none;position:absolute;max-height:calc(100dvh - 90px - env(safe-area-inset-top,0px) - var(--panel-h,0px) - var(--edge-h,0px));overflow-y:auto;-webkit-overflow-scrolling:touch;bottom:calc(58px + env(safe-area-inset-bottom,0px) + var(--panel-h,0px) + var(--edge-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;background:rgba(20,20,20,0.95);border:1px solid #343b48;border-radius:10px;padding:12px;width:200px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
+  <div id="map-controls-panel" style="display:none;position:absolute;max-height:calc(100dvh - var(--ad-shift,0px) - 70px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - var(--panel-h,0px) - var(--edge-h,0px));overflow-y:auto;-webkit-overflow-scrolling:touch;bottom:calc(58px + env(safe-area-inset-bottom,0px) + var(--panel-h,0px) + var(--edge-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;background:rgba(20,20,20,0.95);border:1px solid #343b48;border-radius:10px;padding:12px;width:200px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
     <div style="font-size:10px;color:#7e7e8b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;" data-i18n="map_type_label">地図の種類</div>
     <div style="display:flex;gap:6px;margin-bottom:14px;">
       <button class="maptype-btn active" id="maptype-roadmap" onclick="setMapType('roadmap')" style="flex:1;padding:6px 4px;font-size:11px;border-radius:6px;cursor:pointer;" data-i18n="map_type_default">標準</button>
@@ -3455,7 +3471,34 @@ function applyEditMode(){
 }
 
 // 編集モードでない時に出す、見るだけの吹き出し
+// ===== 写真カード =====
+// 写真付きの吹き出しは、地図の枠に収まらず切れることがあるので、地図の外に出すカードにする
+// ・✕を押した時だけ閉じる（地図を動かす・パネルを開け閉めしても出たまま）
+// ・別の写真を押すと入れ替わる。写真を押すと全画面で表示
+let photoCardFull = '', photoCardToken = 0;
+function showPhotoCard(title, memo, photo){
+  const card = document.getElementById('photo-card'); if(!card) return;
+  document.getElementById('pc-title').textContent = title || '—';
+  const m = document.getElementById('pc-memo'); m.textContent = memo || ''; m.style.display = memo ? '' : 'none';
+  const img = document.getElementById('pc-img');
+  photoCardFull = photo.full || photo.thumb;
+  img.src = photo.thumb;
+  // 大きく見せるので、元の写真が読み込めたら差し替える
+  const token = ++photoCardToken;
+  if(photo.full && photo.full !== photo.thumb){
+    const big = new Image();
+    big.onload = ()=>{ if(token === photoCardToken) img.src = photo.full; };
+    big.src = photo.full;
+  }
+  card.style.display = 'block';
+}
+function closePhotoCard(){
+  photoCardToken++;
+  const card = document.getElementById('photo-card'); if(card) card.style.display = 'none';
+}
+
 function showInfoPopup(latlng, title, memo, photo){
+  if(photo && photo.thumb){ showPhotoCard(title, memo, photo); return; }
   const img = (photo && photo.thumb)
     ? `<br><img src="${photo.thumb}" onclick="openPhotoViewer('${photo.full||photo.thumb}')" style="margin-top:6px;max-width:220px;width:100%;border-radius:8px;cursor:zoom-in;display:block;">`
     : '';
@@ -3668,7 +3711,7 @@ function setModalTarget(target){
     showIconPicker(false);
     showPhotoRow(false);
     showModalSegRow(true);
-    showPointColorRow(true, null);
+    showPointColorRow(true, lastPointColor());   // 前に選んだ色を最初から選んでおく
     updatePositionRow();
   }
 }
@@ -3731,12 +3774,15 @@ function determineInsertPosition(){
 function insertRoutePointAt(name, memo, lat, lng, fixedPointId, icon){
   const p={id:Date.now(), lat, lng, name, memo, marker:null};
   if(fixedPointId){ p.fixedPointId = fixedPointId; p.icon = icon || '⭐'; }
-  else if(document.getElementById('point-color-row').style.display!=='none' && editPointColor) p.color = editPointColor;
+  else if(document.getElementById('point-color-row').style.display!=='none'){
+    if(editPointColor) p.color = editPointColor;
+    rememberPointColor(editPointColor);   // 次のポイントもこの色
+  }
   const insertAt = determineInsertPosition();
   points.splice(insertAt,0,p);
   invalidateSeg(insertAt-1);
   // 前のポイントからこのポイントまでの区間に、選んだ移動手段を使う
-  if(modalSegRowActive && insertAt>0 && points[insertAt-1]) points[insertAt-1].segMode = modalSegMode;
+  if(modalSegRowActive && insertAt>0 && points[insertAt-1]){ points[insertAt-1].segMode = modalSegMode; rememberSegMode(modalSegMode); }
   rebuildAllMarkers();
   updatePolyline();
   renderList();
@@ -4285,16 +4331,18 @@ function drawPlayAt(dist){
   // （距離の足し引きのわずかな誤差で、最後の区間が「途中」と判定され、最後のピンが出なかった）
   if(dist >= playTotal - 0.5) reached = Math.max(reached, playSegs[playSegs.length-1].endIndex);
   playReached = reached;
-  // 写真は「さしかかった」時に出す：到着の約1秒前（再生速度に合わせた距離。最低30m）
-  const lead = Math.max(30, PLAY_BASE_SPEED * playSpeed * 1.0);
+  // ピンと写真は同時に出す：到着の約0.3秒前（画面上の時間。再生速度に合わせた距離。最低10m）
+  const lead = Math.max(10, PLAY_BASE_SPEED * playSpeed * 0.3);
   let acc = 0, appr = 0;
   for(const sg of playSegs){ acc += sg.len; if(acc <= dist + lead) appr = sg.endIndex; else break; }
+  const prevApproach = playApproach;
   playApproach = Math.max(appr, reached);
   playMarker.setLatLng(pos);
   playMarker.setIcon(L.divIcon({html:playIconHTML(heading + mapBearingDeg()), iconSize:[44,44], iconAnchor:[22,22], className:''}));
   // 通り過ぎたポイントのピンを出す
   const showAllPins = document.getElementById('play-pins').checked;
-  points.forEach((p,idx)=>{ if(p.marker) p.marker.setOpacity((showAllPins || idx<=reached) ? 1 : 0); });
+  points.forEach((p,idx)=>{ if(p.marker) p.marker.setOpacity((showAllPins || idx<=playApproach) ? 1 : 0); });
+  if(playApproach !== prevApproach) renderPhotoBadges(false);   // 写真も同じ瞬間に出す（0.4秒ごとの見回りを待たない）
   if(document.getElementById('play-follow').checked) panToVisible(pos, {animate:false});
   document.getElementById('play-dist').textContent = formatDist(dist) + ' / ' + formatDist(playTotal);
   // 指でシークバーを動かしている間は、再生側から値を書き戻さない（書き戻すと指の位置に戻されて動かせない）
@@ -4733,6 +4781,11 @@ function pickPointColor(c){ editPointColor = c || null; renderPointColors(); }
 
 // 追加モーダルの移動手段（前のポイントからこのポイントまでの区間に使う）
 let modalSegMode = 'car';
+// 最後に選んだピンの色・移動手段（次のポイント・次のルートでも使う。端末に保存）
+function lastPointColor(){ try{ return localStorage.getItem('navi_last_point_color') || null; }catch(e){ return null; } }
+function lastSegMode(){ try{ const m = localStorage.getItem('navi_last_seg_mode'); return SEG_MODES.includes(m) ? m : null; }catch(e){ return null; } }
+function rememberPointColor(c){ try{ localStorage.setItem('navi_last_point_color', c || ''); }catch(e){} }
+function rememberSegMode(m){ try{ if(SEG_MODES.includes(m)) localStorage.setItem('navi_last_seg_mode', m); }catch(e){} }
 function renderModalSegModes(){
   document.getElementById('modal-seg-modes').innerHTML = SEG_MODES.map(m=>
     `<button class="seg-mode-btn${m===modalSegMode?' active':''}" onclick="pickModalSegMode('${m}')">${SEG_ICONS[m]}</button>`).join('');
@@ -4743,7 +4796,7 @@ function showModalSegRow(show){
   const row = document.getElementById('modal-seg-row');
   modalSegRowActive = !!(show && points.length>0);
   row.style.display = modalSegRowActive ? 'block' : 'none';
-  if(modalSegRowActive){ modalSegMode = segModeOf(points.length-1); renderModalSegModes(); }
+  if(modalSegRowActive){ modalSegMode = lastSegMode() || segModeOf(points.length-1); renderModalSegModes(); }
 }
 
 // 今の移動手段で、この区間の道を取り直す
@@ -4751,6 +4804,7 @@ function redrawSegRoute(){
   if(segEditIndex===null) return;
   const p = points[segEditIndex];
   p.segMode = segEditMode;
+  rememberSegMode(segEditMode);   // リストで移動手段を変えた時も、次からはそれを使う
   if(segEditColor) p.segColor = segEditColor; else delete p.segColor;
   delete p.segPath;
   closeSegDialog();
@@ -4848,7 +4902,7 @@ function focusPoint(id){
   if(!p)return;
   followMode=false;
   document.getElementById('follow-btn').classList.remove('active');
-  map.setView([p.lat,p.lng],Math.max(map.getZoom(),16));
+  setViewVisible([p.lat,p.lng],Math.max(map.getZoom(),16));   // パネルに隠れない、見えている部分の真ん中に
   flashMapPoint(p.lat, p.lng);
 }
 
@@ -6000,7 +6054,7 @@ function addFixedPointToRoute(p){
   points.splice(insertAt,0,routePoint);
   invalidateSeg(insertAt-1);
   // 前のポイントからこのポイントまでの区間に、選んだ移動手段を使う
-  if(modalSegRowActive && insertAt>0 && points[insertAt-1]) points[insertAt-1].segMode = modalSegMode;
+  if(modalSegRowActive && insertAt>0 && points[insertAt-1]){ points[insertAt-1].segMode = modalSegMode; rememberSegMode(modalSegMode); }
   rebuildAllMarkers();
   updatePolyline();
   renderList();
@@ -8434,7 +8488,35 @@ function showRewardedAd(){
 }
 
 // バナーの高さぶん、地図を下げる（ステータスバーの下にバナーが入る）
+// 【確認用・一時的】Android アプリの黒いすき間の原因を測る：画面の余白の値・広告の高さ・画面の高さを左下に出す
+let adBannerHeightDbg = 0;
+(function(){
+  if(!isNativeApp()) return;
+  const probe = (prop, val) => { const d = document.createElement('div'); d.style.cssText = `position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;${prop}:${val};`; document.body.appendChild(d); return d; };
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;left:4px;bottom:4px;z-index:99999;background:rgba(0,0,0,0.8);color:#7fffd4;font:10px/1.35 monospace;padding:3px 6px;border-radius:6px;pointer-events:none;white-space:pre;';
+  let pEnvTop, pEnvBot, pVarTop, pVarBot;
+  const run = () => {
+    if(!document.body) return;
+    if(!pEnvTop){
+      pEnvTop = probe('height', 'env(safe-area-inset-top,0px)'); pEnvBot = probe('height', 'env(safe-area-inset-bottom,0px)');
+      pVarTop = probe('height', 'var(--safe-area-inset-top,0px)'); pVarBot = probe('height', 'var(--safe-area-inset-bottom,0px)');
+      document.body.appendChild(box);
+    }
+    const ad = getComputedStyle(document.documentElement).getPropertyValue('--ad-shift').trim();
+    const vv = window.visualViewport;
+    box.textContent =
+      `env top ${pEnvTop.offsetHeight} / bottom ${pEnvBot.offsetHeight}\n` +
+      `--safe-area top ${pVarTop.offsetHeight} / bottom ${pVarBot.offsetHeight}\n` +
+      `ad ${adBannerHeightDbg} / --ad-shift ${ad || '-'}\n` +
+      `inner ${innerWidth}x${innerHeight} vv ${vv ? Math.round(vv.width) + 'x' + Math.round(vv.height) : '-'}\n` +
+      `screen ${screen.width}x${screen.height} dpr ${devicePixelRatio}`;
+  };
+  setInterval(run, 1000);
+})();
+
 function setAdShift(h){
+  adBannerHeightDbg = h;
   document.documentElement.style.setProperty('--ad-shift', h > 0 ? `calc(env(safe-area-inset-top,0px) + ${h}px)` : '0px');
   if(window.map) setTimeout(()=>{ map.invalidateSize(); if(typeof updatePanelMetrics === 'function') updatePanelMetrics(); }, 60);
 }
@@ -8594,7 +8676,7 @@ const PANEL_STATES = ['full','list','hidden'];
 let panelState = 'full';
 
 function isLandscapePanel(){
-  return window.matchMedia('(orientation:landscape) and (max-width:1024px)').matches;
+  return window.matchMedia('(min-aspect-ratio:6/5) and (max-width:1024px)').matches;
 }
 
 function setPanelState(state){
