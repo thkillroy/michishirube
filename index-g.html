@@ -586,12 +586,20 @@
           map: this._map._g, position: gll(this._ll), content: this._content(),
           zIndex: 1000 + this._zi, gmpDraggable: this._drag, gmpClickable: this._clickable()
         });
-        this._gm.addEventListener('gmp-click', ev => this._onClick(ev && (ev.domEvent || ev)));
-        this._gm.addListener('dragstart', () => this.fire('dragstart'));
+        const fireTap = de => {
+          const now = Date.now();
+          if(now - (this._tapAt || 0) < 400 || now - (this._dragEndAt || 0) < 300) return;   // 二重・ドラッグ直後は無視
+          this._tapAt = now; this._onClick(de);
+        };
+        this._gm.addEventListener('gmp-click', ev => fireTap(ev && (ev.domEvent || ev)));
+        // ドラッグできるマーカーでは、Google の gmp-click が来ない場合があるので、アイコン自体の「押した」も受け取る
+        this._el.addEventListener('click', ev => { if(this._drag && this._clickable()){ ev.stopPropagation(); fireTap(ev); } });
+        this._gm.addListener('dragstart', () => { this._dragging = true; this.fire('dragstart'); });
         this._gm.addListener('drag', e => { if(e && e.latLng) this._ll = new LatLng(e.latLng.lat(), e.latLng.lng()); this.fire('drag'); });
         this._gm.addListener('dragend', e => {
           const p = (e && e.latLng) ? e.latLng : this._gm.position;
           if(p) this._ll = toLL(p);
+          this._dragging = false; this._dragEndAt = Date.now();
           this.fire('dragend');
         });
         return;
@@ -3474,6 +3482,7 @@ map.on('dragstart',()=>{ followMode=false; document.getElementById('follow-btn')
 let overlayClosedAt = 0;
 map.on('popupclose', ()=>{ overlayClosedAt = Date.now(); });
 map.on('click', e=>{
+  if(inlineEdit){ endInlineEdit(); return; }   // 編集欄が開いている時の地図のタップは、閉じるだけ
   if(!addMode)return;
   if(Date.now() - overlayClosedAt < 700) return;
   if(map.closePopup && document.querySelector('.leaflet-popup')){ map.closePopup(); return; }
@@ -4086,15 +4095,9 @@ function addMarker(p,idx){
   if(m.dragging && (isLinked || !addMode)) m.dragging.disable();
   m.bindTooltip(makeTooltip(p,idx),{direction:'top',offset:[0,-40]});
   if(isLinked){
-    m.on('click',function(e){ L.DomEvent.stopPropagation(e);
-      if(addMode) openInlineEdit(p.id);
-      else showInfoPopup(e.latlng, (p.name||t('nav_point_default',{n:idx+1})), p.memo);
-    });
+    m.on('click',function(e){ L.DomEvent.stopPropagation(e); onRoutePointTap(p); });
   } else {
-    m.on('click',function(e){ L.DomEvent.stopPropagation(e);
-      if(addMode) openInlineEdit(p.id);
-      else showInfoPopup(e.latlng, (p.name||t('nav_point_default',{n:idx+1})), p.memo);
-    });
+    m.on('click',function(e){ L.DomEvent.stopPropagation(e); onRoutePointTap(p); });
     m.on('dragend',e=>{
       p.lat=e.target.getLatLng().lat; p.lng=e.target.getLatLng().lng;
       const i = points.findIndex(x=>x.id===p.id);
@@ -4103,6 +4106,26 @@ function addMarker(p,idx){
     });
   }
   p.marker=m;
+}
+
+// 地図のルートのポイントを押した時
+// ・編集中：地図の真ん中に寄せ、ルートリストのその番号を編集欄にする（パネルを閉じていたら「ルートリストだけ」で開き、終わったら閉じる）
+// ・編集中でない：地図の真ん中に寄せ、名前とメモの吹き出しを出し、ルートリストをその番号までスクロール（パネルは今のまま）
+function onRoutePointTap(p){
+  const i = points.indexOf(p); if(i < 0) return;
+  if(addMode){ openInlineEdit(p.id); return; }
+  followMode = false;
+  document.getElementById('follow-btn').classList.remove('active');
+  panToVisible([p.lat, p.lng]);
+  showInfoPopup([p.lat, p.lng], (p.name || t('nav_point_default', {n: i+1})), p.memo);
+  scrollListToPoint(i);
+}
+function scrollListToPoint(i){
+  if(panelState === 'hidden') return;   // パネルを閉じている時は動かさない
+  setTimeout(()=>{
+    const rows = document.querySelectorAll('#points-wrap .point-row');
+    if(rows[i]) rows[i].scrollIntoView({ behavior:'smooth', block:'center' });
+  }, 50);
 }
 
 function makeTooltip(p,idx){
@@ -4894,7 +4917,8 @@ function openInlineEdit(id){
   // 地図をそのポイントに寄せる（追いかけは止める）
   followMode = false;
   document.getElementById('follow-btn').classList.remove('active');
-  setTimeout(()=>panToVisible([p.lat, p.lng]), 280);
+  panToVisible([p.lat, p.lng]);
+  setTimeout(()=>panToVisible([p.lat, p.lng]), 300);   // パネルを開いて地図の見える範囲が変わった後に、もう一度真ん中へ
   // リストの編集欄が見えるようにする
   setTimeout(()=>{ const box = document.getElementById('ie-box'); if(box) box.scrollIntoView({ behavior:'smooth', block:'nearest' }); }, 80);
 }
@@ -4975,11 +4999,11 @@ function saveInlineEdit(){
   updatePolyline();
 }
 function cancelInlineEdit(){ if(inlineEdit) endInlineEdit(); }
-function endInlineEdit(){
+function endInlineEdit(restorePanel = true){
   const st = inlineEdit; inlineEdit = null;
   overlayClosedAt = Date.now();   // 閉じるためのタップでは、新しいポイントを作らない
   renderList();
-  if(st && st.prevPanel) setPanelState(st.prevPanel);   // パネルを閉じていた時は、また閉じる
+  if(restorePanel && st && st.prevPanel) setPanelState(st.prevPanel);   // パネルを閉じていた時は、また閉じる
 }
 // 固定ポイントとつながったポイント：固定ポイントの編集画面を開く
 function ieOpenLinked(){
@@ -4997,13 +5021,23 @@ function ieToFixed(){
   document.getElementById('edit-popup-memo').value = st.memo;
   openConvertToFixedModal();
 }
-// 編集欄の外を触ったら、キャンセル
-document.addEventListener('pointerdown', e=>{
+// 編集欄の外を押したら、キャンセル
+// ・指が触れた瞬間に閉じると、パネルが動いた後に「押した」が届き、指の下に来た別のボタン（フォロー・編集など）が押されてしまう。
+//   そのため「押した」の時点で閉じる（押されたボタンは、もう決まっている）
+// ・パネルの中を押した時は、パネルの開け閉めはその操作に任せる（元に戻さない）
+document.addEventListener('click', e=>{
   if(!inlineEdit) return;
   const box = document.getElementById('ie-box');
   if(box && box.contains(e.target)) return;
-  cancelInlineEdit();
+  const bottom = document.getElementById('bottom'), edge = document.getElementById('panel-edge');
+  const inPanel = (bottom && bottom.contains(e.target)) || (edge && edge.contains(e.target));
+  endInlineEdit(!inPanel);
 }, true);
+// パネルの取っ手・端のバーは、指で触った時に「押した」を止めている（ゴーストクリック対策）ので、触れた時点で閉じる（パネルは元に戻さない）
+['panel-handle','panel-edge'].forEach(id=>{
+  const el = document.getElementById(id);
+  if(el) el.addEventListener('pointerdown', ()=>{ if(inlineEdit) endInlineEdit(false); }, true);
+});
 
 // ===== ポイントリスト =====
 function renderList(){
