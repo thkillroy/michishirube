@@ -1244,6 +1244,23 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
 .seg-color-btn { width:34px; height:34px; border-radius:50%; border:2px solid #343b48; cursor:pointer; padding:0; }
 .seg-color-btn.active { border-color:#e9e9ee; box-shadow:0 0 0 2px #ff9f1c; }
 .seg-row { display:flex; align-items:center; gap:6px; padding:2px 8px 2px 34px; }
+/* ルートリストの中の編集欄（地図のポイントを押すと、その番号の行が編集欄になる） */
+.point-row.ie-row { align-items:flex-start; background:#14120a; border:1px solid #ff9f1c; border-radius:10px; margin:6px 8px; padding:10px 12px; }
+.ie-body { flex:1; min-width:0; }
+.ie-body label { font-size:11px; color:#7e7e8b; display:block; margin:8px 0 4px; }
+.ie-body input, .ie-body textarea { width:100%; box-sizing:border-box; background:#08090d; border:1px solid #262b36; border-radius:8px; color:#e9e9ee; padding:8px 10px; font-size:15px; outline:none; font-family:inherit; }
+.ie-body input:focus, .ie-body textarea:focus { border-color:#ff9f1c; }
+.ie-body textarea { resize:none; height:56px; }
+.ie-chips { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.ie-chips .seg-color-btn { width:28px; height:28px; }
+.ie-seg { margin-top:10px; padding-top:8px; border-top:1px dashed #343b48; }
+.ie-seg-title { font-size:12px; color:#ff9f1c; font-weight:700; }
+.ie-btns { display:flex; gap:8px; margin-top:12px; }
+.ie-btns button { flex:1; padding:10px 6px; border-radius:8px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
+.ie-save { background:#ff9f1c; border:1px solid #ff9f1c; color:#000; }
+.ie-cancel { background:transparent; border:1px solid #343b48; color:#c9c9d2; }
+.ie-fixed { width:100%; margin-top:8px; padding:8px; background:#332800; border:1px solid #ff9f1c; color:#ff9f1c; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; }
+.ie-linked { font-size:14px; color:#e9e9ee; display:flex; align-items:center; gap:6px; margin-bottom:6px; }
 .seg-chip { display:inline-flex; align-items:center; gap:4px; font-size:11px; color:#9a9aa6; background:#14161d; border:1px solid #2a2a2a; border-radius:10px; padding:2px 8px; cursor:pointer; }
 .seg-dash { flex:1; height:3px; border-radius:2px; }
 .vis-btn.active { background:#ff9f1c; border-color:#ff9f1c; color:#000; }
@@ -3473,7 +3490,7 @@ function toggleAddMode(){
 function applyEditMode(){
   const btn=document.getElementById('btn-add');
   if(addMode){ btn.textContent=t('edit_mode_btn_active'); btn.className='btn btn-add-active'; }
-  else{ btn.textContent=t('edit_mode_btn'); btn.className='btn btn-gray'; insertAfterIndex=null; closeEditPopup(); }
+  else{ btn.textContent=t('edit_mode_btn'); btn.className='btn btn-gray'; insertAfterIndex=null; closeEditPopup(); if(inlineEdit) endInlineEdit(); }
   points.forEach(p=>{
     if(!p.marker || !p.marker.dragging) return;
     if(addMode && !p.fixedPointId) p.marker.dragging.enable();
@@ -4070,12 +4087,12 @@ function addMarker(p,idx){
   m.bindTooltip(makeTooltip(p,idx),{direction:'top',offset:[0,-40]});
   if(isLinked){
     m.on('click',function(e){ L.DomEvent.stopPropagation(e);
-      if(addMode) openLinkedRoutePointModal(p.id);
+      if(addMode) openInlineEdit(p.id);
       else showInfoPopup(e.latlng, (p.name||t('nav_point_default',{n:idx+1})), p.memo);
     });
   } else {
     m.on('click',function(e){ L.DomEvent.stopPropagation(e);
-      if(addMode) _openEditFromMarker(p.id);
+      if(addMode) openInlineEdit(p.id);
       else showInfoPopup(e.latlng, (p.name||t('nav_point_default',{n:idx+1})), p.memo);
     });
     m.on('dragend',e=>{
@@ -4857,6 +4874,137 @@ function toggleRouteMode(){
   updatePolyline();
 }
 
+// ===== ルートリストの中の編集欄 =====
+// ・編集中に地図のポイント（またはリストの番号）を押すと、リストのその番号の行が編集欄になる
+// ・名前・メモ・ピンの色と、そのポイントから次のポイントまでの区間（移動手段・線の色・線の種類）をここで変える
+// ・「保存」で反映。「キャンセル」か、編集欄の外を触ると反映せずに閉じる
+// ・パネルを閉じていた時は「ルートリストだけ」で開き、終わったらまた閉じる
+let inlineEdit = null;   // { id, prevPanel, name, memo, color, segMode, segColor, segStyle }
+function ieEsc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
+function openInlineEdit(id){
+  _suppressMapClick = true;
+  const i = points.findIndex(x=>x.id===id); if(i<0) return;
+  if(inlineEdit && inlineEdit.id === id) return;
+  const p = points[i];
+  const prevPanel = inlineEdit ? inlineEdit.prevPanel : (panelState === 'hidden' ? 'hidden' : null);
+  inlineEdit = { id, prevPanel, name: p.name || '', memo: p.memo || '', color: p.color || null,
+    segMode: segModeOf(i), segColor: p.segColor || null, segStyle: p.segStyle || 'auto' };
+  if(panelState === 'hidden') setPanelState('list');
+  renderList();
+  // 地図をそのポイントに寄せる（追いかけは止める）
+  followMode = false;
+  document.getElementById('follow-btn').classList.remove('active');
+  setTimeout(()=>panToVisible([p.lat, p.lng]), 280);
+  // リストの編集欄が見えるようにする
+  setTimeout(()=>{ const box = document.getElementById('ie-box'); if(box) box.scrollIntoView({ behavior:'smooth', block:'nearest' }); }, 80);
+}
+function inlineEditorHTML(p, i){
+  const st = inlineEdit, isLinked = !!p.fixedPointId, hasSeg = i < points.length - 1;
+  const colorChips = (cur, fn) =>
+    SEG_COLOR_CHOICES.map(c=>`<button class="seg-color-btn${c===cur?' active':''}" style="background:${c};" onclick="${fn}('${c}')"></button>`).join('') +
+    `<button class="ml-btn" onclick="${fn}('')">${t('seg_color_default')}</button>`;
+  let h = `<div class="point-row ie-row" id="ie-box">
+    <div class="point-num" style="flex-shrink:0;">${i+1}</div>
+    <div class="ie-body">`;
+  if(!isLinked){
+    h += `<label style="margin-top:0;">${t('point_name_label')}</label>
+      <input type="text" id="ie-name" autocomplete="off" value="${ieEsc(st.name)}" placeholder="${ieEsc(t('point_name_placeholder'))}" oninput="inlineEdit.name=this.value">
+      <label>${t('memo_label')}</label>
+      <textarea id="ie-memo" placeholder="${ieEsc(t('memo_placeholder'))}" oninput="inlineEdit.memo=this.value">${ieEsc(st.memo)}</textarea>
+      <label>${t('point_color_label')}</label>
+      <div class="ie-chips">${colorChips(st.color || '#ff9f1c', 'iePickColor')}</div>`;
+  } else {
+    h += `<div class="ie-linked">${p.icon ? iconHTML(p.icon, 18) : ''}<span>${ieEsc(p.name || '')}</span></div>
+      <button class="ml-btn" onclick="ieOpenLinked()">${t('edit_fixed_point_modal_title')}</button>`;
+  }
+  if(hasSeg){
+    const styleKeys = ['auto','solid','dash','dot','dashdot','fine','long'];
+    const lineColor = st.segColor || segDefaultColor(st.segMode);
+    h += `<div class="ie-seg">
+      <div class="ie-seg-title">${t('seg_title')}　${i+1} → ${i+2}</div>
+      <label>${t('seg_mode_label')}</label>
+      <div class="ie-chips">${SEG_MODES.map(m=>`<button class="seg-mode-btn${m===st.segMode?' active':''}" onclick="iePickSegMode('${m}')">${SEG_ICONS[m]}</button>`).join('')}</div>
+      <label>${t('seg_color_label')}</label>
+      <div class="ie-chips">${colorChips(st.segColor || segDefaultColor(st.segMode), 'iePickSegColor')}</div>
+      <label>${t('seg_style_label')}</label>
+      <div class="ie-chips">${styleKeys.map(k=>{
+        const dash = k==='auto' ? '' : (SEG_STYLES[k] || '');
+        const preview = `<svg width="40" height="10"><line x1="1" y1="5" x2="39" y2="5" stroke="${lineColor}" stroke-width="3" ${dash?`stroke-dasharray="${dash}"`:''}/></svg>`;
+        return `<button class="ml-btn" style="padding:4px 6px;${k===st.segStyle?'border-color:#ff9f1c;background:#332800;':''}" onclick="iePickSegStyle('${k}')">${k==='auto'?t('seg_style_auto'):preview}</button>`;
+      }).join('')}</div>
+    </div>`;
+  }
+  h += `<div class="ie-btns">
+      <button class="ie-cancel" onclick="cancelInlineEdit()">${t('cancel_btn')}</button>
+      <button class="ie-save" onclick="saveInlineEdit()">${t('save_btn2')}</button>
+    </div>`;
+  if(!isLinked) h += `<button class="ie-fixed" onclick="ieToFixed()">${t('save_as_fixed_btn')}</button>`;
+  h += `</div></div>`;
+  return h;
+}
+// 色や移動手段を選んだ時は、編集欄だけを描き直す（入力中の文字はそのまま）
+function rerenderInlineEditor(){
+  const box = document.getElementById('ie-box'); if(!box || !inlineEdit) return;
+  const i = points.findIndex(x=>x.id===inlineEdit.id); if(i<0) return;
+  const tmp = document.createElement('div'); tmp.innerHTML = inlineEditorHTML(points[i], i);
+  box.replaceWith(tmp.firstElementChild);
+}
+function iePickColor(c){ if(!inlineEdit) return; inlineEdit.color = c || null; rerenderInlineEditor(); }
+function iePickSegMode(m){ if(!inlineEdit) return; inlineEdit.segMode = m; rerenderInlineEditor(); }
+function iePickSegColor(c){ if(!inlineEdit) return; inlineEdit.segColor = c || null; rerenderInlineEditor(); }
+function iePickSegStyle(k){ if(!inlineEdit) return; inlineEdit.segStyle = k; rerenderInlineEditor(); }
+function saveInlineEdit(){
+  const st = inlineEdit; if(!st) return;
+  const i = points.findIndex(x=>x.id===st.id);
+  if(i >= 0){
+    const p = points[i];
+    if(!p.fixedPointId){
+      p.name = st.name.trim(); p.memo = st.memo.trim();
+      if(st.color) p.color = st.color; else delete p.color;
+      rememberPointColor(st.color);
+    }
+    if(i < points.length - 1){
+      if(segModeOf(i) !== st.segMode) delete p.segPath;   // 移動手段が変わったら、道の線を引き直す
+      p.segMode = st.segMode; rememberSegMode(st.segMode);
+      if(st.segColor) p.segColor = st.segColor; else delete p.segColor;
+      if(st.segStyle && st.segStyle !== 'auto') p.segStyle = st.segStyle; else delete p.segStyle;
+    }
+  }
+  endInlineEdit();
+  refreshAllMarkers();
+  updatePolyline();
+}
+function cancelInlineEdit(){ if(inlineEdit) endInlineEdit(); }
+function endInlineEdit(){
+  const st = inlineEdit; inlineEdit = null;
+  overlayClosedAt = Date.now();   // 閉じるためのタップでは、新しいポイントを作らない
+  renderList();
+  if(st && st.prevPanel) setPanelState(st.prevPanel);   // パネルを閉じていた時は、また閉じる
+}
+// 固定ポイントとつながったポイント：固定ポイントの編集画面を開く
+function ieOpenLinked(){
+  const id = inlineEdit && inlineEdit.id; if(!id) return;
+  endInlineEdit();
+  openLinkedRoutePointModal(id);
+}
+// 「⭐固定ポイントとして保存」：入力中の名前・メモを使って、今までの画面へつなぐ
+function ieToFixed(){
+  const st = inlineEdit; if(!st) return;
+  const p = points.find(x=>x.id===st.id); if(!p) return;
+  endInlineEdit();
+  editPopupId = p.id;
+  document.getElementById('edit-popup-name').value = st.name;
+  document.getElementById('edit-popup-memo').value = st.memo;
+  openConvertToFixedModal();
+}
+// 編集欄の外を触ったら、キャンセル
+document.addEventListener('pointerdown', e=>{
+  if(!inlineEdit) return;
+  const box = document.getElementById('ie-box');
+  if(box && box.contains(e.target)) return;
+  cancelInlineEdit();
+}, true);
+
 // ===== ポイントリスト =====
 function renderList(){
   if(typeof updatePanelMetrics === 'function') setTimeout(updatePanelMetrics, 0);
@@ -4871,11 +5019,7 @@ function renderList(){
     const displayName=p.name||'';
     const isLinked = !!p.fixedPointId;
     const starPrefix = p.icon ? `<span style="display:inline-flex;align-items:center;">${iconHTML(p.icon,16)}</span>` : '';
-    const numOnclick = !addMode
-      ? `focusPoint(${p.id})`
-      : (isLinked
-        ? `_suppressMapClick=true; openLinkedRoutePointModal(${p.id})`
-        : `_suppressMapClick=true; openEditPopup(${p.id}, this)`);
+    const numOnclick = !addMode ? `focusPoint(${p.id})` : `openInlineEdit(${p.id})`;
 
     // 先頭の前に挿入ボタン（ポイントが2つ以上の時のみ）
     if(addMode && i===0 && points.length>=2){
@@ -4883,6 +5027,14 @@ function renderList(){
     }
 
     const segDist = segmentDistances[i] != null ? formatDist(segmentDistances[i]) : '';
+    // 編集中のポイント：その行を編集欄にする（区間の設定もここで行うので、下の区間の行は出さない）
+    if(inlineEdit && inlineEdit.id === p.id){
+      html += inlineEditorHTML(p, i);
+      if(addMode && i<points.length-1 && points.length>=2){
+        html+=`<div class="insert-row"><button class="insert-btn" data-after="${i}" onclick="startInsertAt(${i})">＋</button></div>`;
+      }
+      return;
+    }
     html+=`<div class="point-row ${rowClass}">
       ${starPrefix}
       <div class="point-num ${numClass}" onclick="${numOnclick}" style="cursor:pointer;">${i+1}</div>
@@ -4902,7 +5054,7 @@ function renderList(){
         ? `background:repeating-linear-gradient(90deg, ${c} 0 ${parseInt(dv)}px, transparent ${parseInt(dv)}px ${parseInt(dv)+6}px);`
         : `background:${c};`;
       html+=`<div class="seg-row">
-        <span class="seg-chip" ${addMode?`onclick="openSegDialog(${i})"`:''}>${SEG_ICONS[m]}${addMode?' ▾':''}</span>
+        <span class="seg-chip">${SEG_ICONS[m]}</span>
         <span class="seg-dash" style="${dashStyle}"></span>
       </div>`;
     }
@@ -4944,6 +5096,7 @@ function flashMapPoint(lat, lng){
 function deletePoint(id){
   const i=points.findIndex(x=>x.id===id);
   if(i===-1)return;
+  if(inlineEdit && inlineEdit.id===id) endInlineEdit();
   map.removeLayer(points[i].marker);
   points.splice(i,1);
   invalidateSeg(i-1);
