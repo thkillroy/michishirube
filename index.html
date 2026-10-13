@@ -103,7 +103,7 @@ body.rec-mode #bottom, body.rec-mode .leaflet-control-zoom, body.rec-mode .compa
 .ml-move { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
 .ml-move select { max-width:180px; }
 .map-flash { position:relative; width:64px; height:64px; pointer-events:none; }
-.map-flash span { position:absolute; inset:0; border-radius:50%; border:4px solid #ff9f1c; box-shadow:0 0 12px rgba(255,159,28,0.9); animation:mapFlash 1.1s ease-out infinite; }
+.map-flash span { position:absolute; inset:0; border-radius:50%; border:4px solid var(--flash-color,#ff9f1c); box-shadow:0 0 12px var(--flash-color,#ff9f1c); animation:mapFlash 1.1s ease-out infinite; }
 .map-flash span:nth-child(2) { animation-delay:.55s; }
 @keyframes mapFlash { 0% { transform:scale(0.25); opacity:1; } 100% { transform:scale(1.6); opacity:0; } }
 .ml-drag { flex-shrink:0; width:24px; text-align:center; font-size:18px; line-height:1; color:#7e7e8b; cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; padding:4px 0; }
@@ -309,7 +309,18 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
 .seg-color-btn { width:34px; height:34px; border-radius:50%; border:2px solid #343b48; cursor:pointer; padding:0; }
 .seg-color-btn.active { border-color:#e9e9ee; box-shadow:0 0 0 2px #ff9f1c; }
 .seg-row { display:flex; align-items:center; gap:6px; padding:2px 8px 2px 34px; }
-/* ルートリストの中の編集欄（地図のポイントを押すと、その番号の行が編集欄になる） */
+/* ポイントの編集（ポップアップ）：広告・ステータスバー・キーボードをよけた範囲の真ん中に出す */
+#pe-wrap { display:none; position:fixed; inset:0; z-index:8000; background:rgba(0,0,0,0.35); box-sizing:border-box;
+  padding:calc(var(--ad-shift,0px) + var(--sat-map, var(--sat, env(safe-area-inset-top,0px))) + 10px) 10px calc(var(--kb-shift,0px) + var(--sab, env(safe-area-inset-bottom,0px)) + 10px);
+  align-items:center; justify-content:center; }
+#pe-wrap.show { display:flex; }
+#pe-card { width:min(460px, 100%); max-height:100%; display:flex; flex-direction:column; background:#12141a; border:1px solid #ff9f1c; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,0.6); overflow:hidden; }
+#pe-head { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; padding:10px 12px 4px 16px; color:#ff9f1c; font-weight:700; font-size:15px; }
+#pe-head .pe-x { width:34px; height:34px; border-radius:50%; border:1px solid #343b48; background:#1b1f28; color:#e9e9ee; font-size:15px; cursor:pointer; }
+#pe-body { flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:0 16px 10px; min-height:60px; }
+#pe-foot { flex:0 0 auto; display:flex; gap:10px; padding:10px 16px 12px; border-top:1px solid #262b36; background:#12141a; }
+#pe-foot button { flex:1; padding:13px 6px; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
+/* 編集画面の中身 */
 .point-row.ie-row { align-items:flex-start; background:#14120a; border:1px solid #ff9f1c; border-radius:10px; margin:6px 8px; padding:10px 12px; }
 .ie-body { flex:1; min-width:0; }
 .ie-body label { font-size:11px; color:#7e7e8b; display:block; margin:8px 0 4px; }
@@ -699,6 +710,8 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
       <button onclick="confirmLogout()"
         style="flex:1;padding:10px;background:#2a0000;border:1px solid #500;color:#ff6666;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;" data-i18n="logout_btn">ログアウト</button>
     </div>
+    <button id="delete-account-btn" onclick="deleteMyAccount()"
+      style="width:100%;margin-top:18px;padding:9px;background:transparent;border:1px solid #5a1f1f;color:#ff6b6b;border-radius:8px;font-size:12px;cursor:pointer;" data-i18n="delete_account_btn">アカウントを削除</button>
   </div>
 </div>
 
@@ -786,9 +799,10 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
     <select id="save-route-group" class="dlg-select"></select>
     <label style="font-size:11px;color:#5e5e6b;display:block;margin-bottom:5px;" data-i18n="visibility_label">公開範囲</label>
     <select id="save-route-visibility" class="dlg-select" style="margin-bottom:16px;"></select>
-    <div style="display:flex;gap:8px;">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button onclick="closeSaveDialog()" style="flex:1;padding:10px;background:#181b23;border:1px solid #262b36;color:#9a9aa6;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;" data-i18n="cancel_btn">キャンセル</button>
-      <button onclick="saveToSupabase()" style="flex:1;padding:10px;background:#ff9f1c;border:none;color:#000;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;" data-i18n="save_btn2">保存</button>
+      <button id="save-new-btn" onclick="saveToSupabase('new')" style="flex:1;padding:10px;background:#ff9f1c;border:none;color:#000;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;" data-i18n="save_btn2">保存</button>
+      <button id="save-over-btn" onclick="saveToSupabase('overwrite')" style="display:none;flex:1 1 100%;padding:12px;background:#ff9f1c;border:none;color:#000;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;" data-i18n="overwrite_save_btn">上書き保存</button>
     </div>
   </div>
 </div>
@@ -885,7 +899,18 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
   </div>
 </div>
 
-<!-- ポイントの編集（下から出る画面） -->
+<!-- ポイントの編集（ポップアップ）：外（暗い所）を押すとキャンセル -->
+<div id="pe-wrap" onclick="if(event.target===this && inlineEdit && Date.now() - inlineEdit.openedAt > 450) cancelInlineEdit()">
+  <div id="pe-card">
+    <div id="pe-head"><span id="pe-title"></span><button class="pe-x" onclick="cancelInlineEdit()">✕</button></div>
+    <div id="pe-body"></div>
+    <div id="pe-foot">
+      <button class="ie-cancel" onclick="cancelInlineEdit()" data-i18n="cancel_btn">キャンセル</button>
+      <button class="ie-save" onclick="saveInlineEdit()" data-i18n="save_btn2">保存</button>
+    </div>
+  </div>
+</div>
+<!-- （前の、下から出る編集画面。「⭐固定ポイントとして保存」の中継にだけ使う） -->
 <div id="edit-backdrop" onclick="cancelEditPopup()"></div>
 <div id="edit-popup">
   <div id="edit-popup-title"></div>
@@ -980,6 +1005,7 @@ const SUPPORTED_LANGS = ['ja','en','zh-CN','zh-TW','ko','es','fr','th','vi','de'
 const translations = {
 ja: {
   gps_waiting:'📡 GPS待機中', gps_error:'📡 GPS失敗', gps_accuracy:'📡 精度 ±{m}m',
+  overwrite_save_btn:"上書き保存", save_as_btn:"別名で保存", confirm_same_name_overwrite:"同じフォルダに「{name}」があります。上書きしますか？", alert_overwrite_success:"「{name}」を上書き保存しました", delete_account_btn:"アカウントを削除", confirm_delete_account:"アカウントを削除すると、ルート・固定ポイント・写真・フォロー・いいね・設定など、すべてのデータが消え、元に戻せません。本当に削除しますか？", prompt_delete_account_word:"確認のため「{word}」と入力してください", alert_account_deleted:"アカウントを削除しました", alert_account_delete_fail:"アカウントを削除できませんでした：{err}", delete_account_word:"削除",
   reach_arrived:"到着：{name}", reach_next:"次：{name}", reach_goal:"ゴール", notif_channel_name:"ナビの到着通知", bg_nav_message:"ナビ中：現在地を使っています",
   gps_err_denied:"📡 位置情報が未許可（タップで直し方）", gps_err_unavailable:"📡 位置が取れません（タップ）", gps_err_timeout:"📡 GPS時間切れ（タップ）", gps_help_title:"現在地が取れません", gps_why_denied:"このアプリに位置情報の使用が許可されていません。", gps_why_unavailable:"端末の位置情報がオフになっているか、電波が届かない場所です。", gps_why_timeout:"時間内に位置が取れませんでした。空が見える場所でもう一度お試しください。", gps_fix_ios_safari:"【iPhone（Safari）】\n1. 設定 → プライバシーとセキュリティ → 位置情報サービス をオン\n2. 同じ画面の「Safari Webサイト」→「使用中のみ」\n3. Safariのアドレス欄の左のボタン → Webサイトの設定 → 位置情報 →「許可」\n4. ページを読み込み直す", gps_fix_ios_line:"【iPhone（LINEの中で開いています）】\n1. 設定 → プライバシーとセキュリティ → 位置情報サービス → LINE →「使用中のみ」\n2. または、右上のメニューから「Safariで開く」\n3. ページを読み込み直す", gps_fix_android_app:"【Androidアプリ】\n1. 端末の位置情報（クイック設定）をオン\n2. 設定 → アプリ → MICHI-SHIRUBE → 権限 → 位置情報 →「アプリの使用中のみ許可」\n3. 下の「もう一度試す」を押す", gps_fix_android_browser:"【Android（Chromeなど）】\n1. 端末の位置情報（クイック設定）をオン\n2. アドレス欄の左のアイコン → 権限 → 位置情報 →「許可」\n3. ページを読み込み直す", gps_fix_android_line:"【Android（LINEの中で開いています）】\n1. 設定 → アプリ → LINE → 権限 → 位置情報 →「アプリの使用中のみ許可」\n2. または、右上のメニューから「ブラウザで開く」\n3. ページを読み込み直す", gps_fix_pc:"【パソコン】\n1. アドレス欄の左のアイコン → 位置情報 →「許可」\n2. Windowsは 設定 → プライバシーとセキュリティ → 位置情報 をオン\n3. ページを読み込み直す", gps_help_retry:"もう一度試す", gps_help_close:"閉じる",
   search_placeholder:'🔍 住所・場所を検索', search_btn:'検索',
@@ -1036,6 +1062,7 @@ ja: {
 },
 en: {
   gps_waiting:'📡 Waiting for GPS', gps_error:'📡 GPS failed', gps_accuracy:'📡 Accuracy ±{m}m',
+  overwrite_save_btn:"Save (overwrite)", save_as_btn:"Save as new", confirm_same_name_overwrite:"\"{name}\" already exists in this folder. Overwrite it?", alert_overwrite_success:"\"{name}\" was overwritten", delete_account_btn:"Delete account", confirm_delete_account:"Deleting your account permanently removes all your data, including routes, fixed points, photos, follows, likes and settings. This cannot be undone. Delete your account?", prompt_delete_account_word:"To confirm, type \"{word}\"", alert_account_deleted:"Your account has been deleted", alert_account_delete_fail:"Could not delete your account: {err}", delete_account_word:"DELETE",
   reach_arrived:"Arrived: {name}", reach_next:"Next: {name}", reach_goal:"Goal", notif_channel_name:"Navigation arrivals", bg_nav_message:"Navigating: using your location",
   gps_err_denied:"📡 Location not allowed (tap for help)", gps_err_unavailable:"📡 Location unavailable (tap)", gps_err_timeout:"📡 GPS timed out (tap)", gps_help_title:"Cannot get your location", gps_why_denied:"This app is not allowed to use your location.", gps_why_unavailable:"Location is turned off on your device, or there is no signal here.", gps_why_timeout:"Your location could not be found in time. Try again somewhere you can see the sky.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Settings → Privacy & Security → turn on Location Services\n2. On the same screen: \"Safari Websites\" → \"While Using the App\"\n3. In Safari, tap the button left of the address bar → Website Settings → Location → \"Allow\"\n4. Reload the page", gps_fix_ios_line:"[iPhone (opened inside LINE)]\n1. Settings → Privacy & Security → Location Services → LINE → \"While Using the App\"\n2. Or open it in Safari from the menu at the top right\n3. Reload the page", gps_fix_android_app:"[Android app]\n1. Turn on Location in Quick Settings\n2. Settings → Apps → MICHI-SHIRUBE → Permissions → Location → \"Allow only while using the app\"\n3. Press \"Try again\" below", gps_fix_android_browser:"[Android (Chrome, etc.)]\n1. Turn on Location in Quick Settings\n2. Tap the icon left of the address bar → Permissions → Location → \"Allow\"\n3. Reload the page", gps_fix_android_line:"[Android (opened inside LINE)]\n1. Settings → Apps → LINE → Permissions → Location → \"Allow only while using the app\"\n2. Or open it in your browser from the menu at the top right\n3. Reload the page", gps_fix_pc:"[Computer]\n1. Click the icon left of the address bar → Location → \"Allow\"\n2. On Windows: Settings → Privacy & security → turn on Location\n3. Reload the page", gps_help_retry:"Try again", gps_help_close:"Close",
   search_placeholder:'🔍 Search address / place', search_btn:'Search',
@@ -1092,6 +1119,7 @@ en: {
 },
 'zh-CN': {
   gps_waiting:'📡 等待GPS', gps_error:'📡 GPS失败', gps_accuracy:'📡 精度 ±{m}米',
+  overwrite_save_btn:"覆盖保存", save_as_btn:"另存为", confirm_same_name_overwrite:"此文件夹中已有“{name}”。要覆盖吗？", alert_overwrite_success:"已覆盖保存“{name}”", delete_account_btn:"删除账号", confirm_delete_account:"删除账号后，路线、固定点、照片、关注、点赞、设置等所有数据都将被删除且无法恢复。确定要删除吗？", prompt_delete_account_word:"请输入“{word}”以确认", alert_account_deleted:"账号已删除", alert_account_delete_fail:"无法删除账号：{err}", delete_account_word:"删除",
   reach_arrived:"到达：{name}", reach_next:"下一个：{name}", reach_goal:"终点", notif_channel_name:"导航到达通知", bg_nav_message:"导航中：正在使用当前位置",
   gps_err_denied:"📡 未允许使用位置（点按查看）", gps_err_unavailable:"📡 无法获取位置（点按）", gps_err_timeout:"📡 GPS超时（点按）", gps_help_title:"无法获取当前位置", gps_why_denied:"此应用未获准使用位置信息。", gps_why_unavailable:"设备的位置信息已关闭，或此处没有信号。", gps_why_timeout:"未能及时获取位置。请到能看到天空的地方重试。", gps_fix_ios_safari:"【iPhone（Safari）】\n1. 设置 → 隐私与安全性 → 打开定位服务\n2. 在同一页面：「Safari 浏览器网站」→「使用App期间」\n3. 在Safari中点地址栏左侧的按钮 → 网站设置 → 位置 →「允许」\n4. 重新加载页面", gps_fix_ios_line:"【iPhone（在LINE中打开）】\n1. 设置 → 隐私与安全性 → 定位服务 → LINE →「使用App期间」\n2. 或从右上角菜单选择「在Safari中打开」\n3. 重新加载页面", gps_fix_android_app:"【Android应用】\n1. 在快捷设置中打开位置信息\n2. 设置 → 应用 → MICHI-SHIRUBE → 权限 → 位置信息 →「仅在使用该应用时允许」\n3. 点下方的「重试」", gps_fix_android_browser:"【Android（Chrome等）】\n1. 在快捷设置中打开位置信息\n2. 点地址栏左侧的图标 → 权限 → 位置信息 →「允许」\n3. 重新加载页面", gps_fix_android_line:"【Android（在LINE中打开）】\n1. 设置 → 应用 → LINE → 权限 → 位置信息 →「仅在使用该应用时允许」\n2. 或从右上角菜单选择「在浏览器中打开」\n3. 重新加载页面", gps_fix_pc:"【电脑】\n1. 点地址栏左侧的图标 → 位置 →「允许」\n2. Windows：设置 → 隐私和安全性 → 打开位置\n3. 重新加载页面", gps_help_retry:"重试", gps_help_close:"关闭",
   search_placeholder:'🔍 搜索地址/地点', search_btn:'搜索',
@@ -1148,6 +1176,7 @@ en: {
 },
 'zh-TW': {
   gps_waiting:'📡 等待GPS', gps_error:'📡 GPS失敗', gps_accuracy:'📡 精度 ±{m}公尺',
+  overwrite_save_btn:"覆寫儲存", save_as_btn:"另存新檔", confirm_same_name_overwrite:"此資料夾中已有「{name}」。要覆寫嗎？", alert_overwrite_success:"已覆寫儲存「{name}」", delete_account_btn:"刪除帳號", confirm_delete_account:"刪除帳號後，路線、固定點、照片、追蹤、按讚、設定等所有資料都會被刪除且無法復原。確定要刪除嗎？", prompt_delete_account_word:"請輸入「{word}」以確認", alert_account_deleted:"帳號已刪除", alert_account_delete_fail:"無法刪除帳號：{err}", delete_account_word:"刪除",
   reach_arrived:"抵達：{name}", reach_next:"下一個：{name}", reach_goal:"終點", notif_channel_name:"導航抵達通知", bg_nav_message:"導航中：正在使用目前位置",
   gps_err_denied:"📡 未允許使用位置（點一下查看）", gps_err_unavailable:"📡 無法取得位置（點一下）", gps_err_timeout:"📡 GPS逾時（點一下）", gps_help_title:"無法取得目前位置", gps_why_denied:"此應用程式未獲准使用位置資訊。", gps_why_unavailable:"裝置的定位已關閉，或這裡收不到訊號。", gps_why_timeout:"未能及時取得位置。請到看得見天空的地方再試一次。", gps_fix_ios_safari:"【iPhone（Safari）】\n1. 設定 → 隱私權與安全性 → 開啟定位服務\n2. 同一頁面：「Safari網站」→「使用App期間」\n3. 在Safari點網址列左側的按鈕 → 網站設定 → 位置 →「允許」\n4. 重新載入頁面", gps_fix_ios_line:"【iPhone（在LINE中開啟）】\n1. 設定 → 隱私權與安全性 → 定位服務 → LINE →「使用App期間」\n2. 或從右上角選單選擇「在Safari中開啟」\n3. 重新載入頁面", gps_fix_android_app:"【Android應用程式】\n1. 在快速設定中開啟定位\n2. 設定 → 應用程式 → MICHI-SHIRUBE → 權限 → 位置 →「僅在使用應用程式時允許」\n3. 點下方的「再試一次」", gps_fix_android_browser:"【Android（Chrome等）】\n1. 在快速設定中開啟定位\n2. 點網址列左側的圖示 → 權限 → 位置 →「允許」\n3. 重新載入頁面", gps_fix_android_line:"【Android（在LINE中開啟）】\n1. 設定 → 應用程式 → LINE → 權限 → 位置 →「僅在使用應用程式時允許」\n2. 或從右上角選單選擇「以瀏覽器開啟」\n3. 重新載入頁面", gps_fix_pc:"【電腦】\n1. 點網址列左側的圖示 → 位置 →「允許」\n2. Windows：設定 → 隱私權與安全性 → 開啟位置\n3. 重新載入頁面", gps_help_retry:"再試一次", gps_help_close:"關閉",
   search_placeholder:'🔍 搜尋地址/地點', search_btn:'搜尋',
@@ -1204,6 +1233,7 @@ en: {
 },
 ko: {
   gps_waiting:'📡 GPS 대기 중', gps_error:'📡 GPS 실패', gps_accuracy:'📡 정확도 ±{m}m',
+  overwrite_save_btn:"덮어쓰기 저장", save_as_btn:"다른 이름으로 저장", confirm_same_name_overwrite:"이 폴더에 \"{name}\"이(가) 이미 있습니다. 덮어쓸까요?", alert_overwrite_success:"\"{name}\"을(를) 덮어썼습니다", delete_account_btn:"계정 삭제", confirm_delete_account:"계정을 삭제하면 루트, 고정 포인트, 사진, 팔로우, 좋아요, 설정 등 모든 데이터가 삭제되며 되돌릴 수 없습니다. 정말 삭제할까요?", prompt_delete_account_word:"확인을 위해 \"{word}\"를 입력하세요", alert_account_deleted:"계정을 삭제했습니다", alert_account_delete_fail:"계정을 삭제할 수 없습니다: {err}", delete_account_word:"삭제",
   reach_arrived:"도착: {name}", reach_next:"다음: {name}", reach_goal:"목적지", notif_channel_name:"내비 도착 알림", bg_nav_message:"내비 중: 현재 위치를 사용하고 있습니다",
   gps_err_denied:"📡 위치 권한 없음 (탭하여 도움말)", gps_err_unavailable:"📡 위치를 가져올 수 없음 (탭)", gps_err_timeout:"📡 GPS 시간 초과 (탭)", gps_help_title:"현재 위치를 가져올 수 없습니다", gps_why_denied:"이 앱에 위치 사용이 허용되어 있지 않습니다.", gps_why_unavailable:"기기의 위치 기능이 꺼져 있거나 신호가 닿지 않는 곳입니다.", gps_why_timeout:"시간 안에 위치를 찾지 못했습니다. 하늘이 보이는 곳에서 다시 시도하세요.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. 설정 → 개인정보 보호 및 보안 → 위치 서비스 켜기\n2. 같은 화면에서 「Safari 웹 사이트」→「앱을 사용하는 동안」\n3. Safari 주소창 왼쪽 버튼 → 웹 사이트 설정 → 위치 →「허용」\n4. 페이지 새로고침", gps_fix_ios_line:"[iPhone (LINE 안에서 열림)]\n1. 설정 → 개인정보 보호 및 보안 → 위치 서비스 → LINE →「앱을 사용하는 동안」\n2. 또는 오른쪽 위 메뉴에서 「Safari로 열기」\n3. 페이지 새로고침", gps_fix_android_app:"[Android 앱]\n1. 빠른 설정에서 위치 켜기\n2. 설정 → 애플리케이션 → MICHI-SHIRUBE → 권한 → 위치 →「앱 사용 중에만 허용」\n3. 아래의 「다시 시도」 누르기", gps_fix_android_browser:"[Android (Chrome 등)]\n1. 빠른 설정에서 위치 켜기\n2. 주소창 왼쪽 아이콘 → 권한 → 위치 →「허용」\n3. 페이지 새로고침", gps_fix_android_line:"[Android (LINE 안에서 열림)]\n1. 설정 → 애플리케이션 → LINE → 권한 → 위치 →「앱 사용 중에만 허용」\n2. 또는 오른쪽 위 메뉴에서 「브라우저로 열기」\n3. 페이지 새로고침", gps_fix_pc:"[컴퓨터]\n1. 주소창 왼쪽 아이콘 → 위치 →「허용」\n2. Windows: 설정 → 개인 정보 및 보안 → 위치 켜기\n3. 페이지 새로고침", gps_help_retry:"다시 시도", gps_help_close:"닫기",
   search_placeholder:'🔍 주소·장소 검색', search_btn:'검색',
@@ -1260,6 +1290,7 @@ ko: {
 },
 es: {
   gps_waiting:'📡 Esperando GPS', gps_error:'📡 Error de GPS', gps_accuracy:'📡 Precisión ±{m}m',
+  overwrite_save_btn:"Guardar (sobrescribir)", save_as_btn:"Guardar como nuevo", confirm_same_name_overwrite:"Ya existe «{name}» en esta carpeta. ¿Sobrescribirlo?", alert_overwrite_success:"Se sobrescribió «{name}»", delete_account_btn:"Eliminar cuenta", confirm_delete_account:"Al eliminar tu cuenta se borran para siempre todos tus datos: rutas, puntos fijos, fotos, seguimientos, me gusta y ajustes. No se puede deshacer. ¿Eliminar tu cuenta?", prompt_delete_account_word:"Para confirmar, escribe «{word}»", alert_account_deleted:"Tu cuenta ha sido eliminada", alert_account_delete_fail:"No se pudo eliminar la cuenta: {err}", delete_account_word:"ELIMINAR",
   reach_arrived:"Llegada: {name}", reach_next:"Siguiente: {name}", reach_goal:"Meta", notif_channel_name:"Llegadas de navegación", bg_nav_message:"Navegando: usando tu ubicación",
   gps_err_denied:"📡 Ubicación no permitida (toca)", gps_err_unavailable:"📡 Ubicación no disponible (toca)", gps_err_timeout:"📡 GPS agotó el tiempo (toca)", gps_help_title:"No se puede obtener tu ubicación", gps_why_denied:"Esta app no tiene permiso para usar tu ubicación.", gps_why_unavailable:"La ubicación del dispositivo está desactivada o aquí no hay señal.", gps_why_timeout:"No se encontró tu ubicación a tiempo. Inténtalo de nuevo donde se vea el cielo.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Ajustes → Privacidad y seguridad → activa Localización\n2. En la misma pantalla: «Sitios web de Safari» → «Cuando se use la app»\n3. En Safari, toca el botón a la izquierda de la barra de direcciones → Ajustes del sitio web → Ubicación → «Permitir»\n4. Recarga la página", gps_fix_ios_line:"[iPhone (abierto dentro de LINE)]\n1. Ajustes → Privacidad y seguridad → Localización → LINE → «Cuando se use la app»\n2. O ábrelo en Safari desde el menú de arriba a la derecha\n3. Recarga la página", gps_fix_android_app:"[App de Android]\n1. Activa la ubicación en los ajustes rápidos\n2. Ajustes → Aplicaciones → MICHI-SHIRUBE → Permisos → Ubicación → «Permitir solo mientras se usa la app»\n3. Pulsa «Reintentar» abajo", gps_fix_android_browser:"[Android (Chrome, etc.)]\n1. Activa la ubicación en los ajustes rápidos\n2. Toca el icono a la izquierda de la barra de direcciones → Permisos → Ubicación → «Permitir»\n3. Recarga la página", gps_fix_android_line:"[Android (abierto dentro de LINE)]\n1. Ajustes → Aplicaciones → LINE → Permisos → Ubicación → «Permitir solo mientras se usa la app»\n2. O ábrelo en tu navegador desde el menú de arriba a la derecha\n3. Recarga la página", gps_fix_pc:"[Ordenador]\n1. Haz clic en el icono a la izquierda de la barra de direcciones → Ubicación → «Permitir»\n2. En Windows: Configuración → Privacidad y seguridad → activa Ubicación\n3. Recarga la página", gps_help_retry:"Reintentar", gps_help_close:"Cerrar",
   search_placeholder:'🔍 Buscar dirección/lugar', search_btn:'Buscar',
@@ -1316,6 +1347,7 @@ es: {
 },
 fr: {
   gps_waiting:'📡 En attente du GPS', gps_error:'📡 Échec du GPS', gps_accuracy:'📡 Précision ±{m}m',
+  overwrite_save_btn:"Enregistrer (remplacer)", save_as_btn:"Enregistrer sous", confirm_same_name_overwrite:"« {name} » existe déjà dans ce dossier. Le remplacer ?", alert_overwrite_success:"« {name} » a été remplacé", delete_account_btn:"Supprimer le compte", confirm_delete_account:"La suppression du compte efface définitivement toutes vos données : itinéraires, points fixes, photos, abonnements, j’aime et réglages. Action irréversible. Supprimer votre compte ?", prompt_delete_account_word:"Pour confirmer, saisissez « {word} »", alert_account_deleted:"Votre compte a été supprimé", alert_account_delete_fail:"Impossible de supprimer le compte : {err}", delete_account_word:"SUPPRIMER",
   reach_arrived:"Arrivé : {name}", reach_next:"Suivant : {name}", reach_goal:"Arrivée", notif_channel_name:"Arrivées de navigation", bg_nav_message:"Navigation : utilisation de votre position",
   gps_err_denied:"📡 Position non autorisée (touchez)", gps_err_unavailable:"📡 Position indisponible (touchez)", gps_err_timeout:"📡 Délai GPS dépassé (touchez)", gps_help_title:"Impossible d’obtenir votre position", gps_why_denied:"Cette app n’est pas autorisée à utiliser votre position.", gps_why_unavailable:"La localisation de l’appareil est désactivée, ou il n’y a pas de signal ici.", gps_why_timeout:"Votre position n’a pas été trouvée à temps. Réessayez à un endroit où le ciel est visible.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Réglages → Confidentialité et sécurité → activez Service de localisation\n2. Sur le même écran : « Sites web Safari » → « Lorsque l’app est active »\n3. Dans Safari, touchez le bouton à gauche de la barre d’adresse → Réglages du site web → Position → « Autoriser »\n4. Rechargez la page", gps_fix_ios_line:"[iPhone (ouvert dans LINE)]\n1. Réglages → Confidentialité et sécurité → Service de localisation → LINE → « Lorsque l’app est active »\n2. Ou ouvrez-le dans Safari depuis le menu en haut à droite\n3. Rechargez la page", gps_fix_android_app:"[App Android]\n1. Activez la localisation dans les réglages rapides\n2. Paramètres → Applications → MICHI-SHIRUBE → Autorisations → Position → « Autoriser seulement si l’appli est en cours d’utilisation »\n3. Appuyez sur « Réessayer » ci-dessous", gps_fix_android_browser:"[Android (Chrome, etc.)]\n1. Activez la localisation dans les réglages rapides\n2. Touchez l’icône à gauche de la barre d’adresse → Autorisations → Position → « Autoriser »\n3. Rechargez la page", gps_fix_android_line:"[Android (ouvert dans LINE)]\n1. Paramètres → Applications → LINE → Autorisations → Position → « Autoriser seulement si l’appli est en cours d’utilisation »\n2. Ou ouvrez-le dans votre navigateur depuis le menu en haut à droite\n3. Rechargez la page", gps_fix_pc:"[Ordinateur]\n1. Cliquez sur l’icône à gauche de la barre d’adresse → Position → « Autoriser »\n2. Sous Windows : Paramètres → Confidentialité et sécurité → activez Localisation\n3. Rechargez la page", gps_help_retry:"Réessayer", gps_help_close:"Fermer",
   search_placeholder:'🔍 Rechercher une adresse/un lieu', search_btn:'Rechercher',
@@ -1372,6 +1404,7 @@ fr: {
 },
 th: {
   gps_waiting:'📡 กำลังรอ GPS', gps_error:'📡 GPS ล้มเหลว', gps_accuracy:'📡 ความแม่นยำ ±{m}ม.',
+  overwrite_save_btn:"บันทึกทับ", save_as_btn:"บันทึกเป็นชื่อใหม่", confirm_same_name_overwrite:"มี \"{name}\" อยู่ในโฟลเดอร์นี้แล้ว ต้องการบันทึกทับหรือไม่?", alert_overwrite_success:"บันทึกทับ \"{name}\" แล้ว", delete_account_btn:"ลบบัญชี", confirm_delete_account:"การลบบัญชีจะลบข้อมูลทั้งหมด เช่น เส้นทาง จุดถาวร รูปภาพ การติดตาม ถูกใจ และการตั้งค่า อย่างถาวรและกู้คืนไม่ได้ ต้องการลบบัญชีหรือไม่?", prompt_delete_account_word:"พิมพ์ \"{word}\" เพื่อยืนยัน", alert_account_deleted:"ลบบัญชีแล้ว", alert_account_delete_fail:"ไม่สามารถลบบัญชีได้: {err}", delete_account_word:"ลบ",
   reach_arrived:"ถึงแล้ว: {name}", reach_next:"ถัดไป: {name}", reach_goal:"ปลายทาง", notif_channel_name:"แจ้งเตือนเมื่อถึงจุดระหว่างนำทาง", bg_nav_message:"กำลังนำทาง: กำลังใช้ตำแหน่งของคุณ",
   gps_err_denied:"📡 ไม่ได้อนุญาตตำแหน่ง (แตะเพื่อดูวิธี)", gps_err_unavailable:"📡 ระบุตำแหน่งไม่ได้ (แตะ)", gps_err_timeout:"📡 GPS หมดเวลา (แตะ)", gps_help_title:"ระบุตำแหน่งปัจจุบันไม่ได้", gps_why_denied:"แอปนี้ไม่ได้รับอนุญาตให้ใช้ตำแหน่งของคุณ", gps_why_unavailable:"ปิดตำแหน่งในอุปกรณ์อยู่ หรือบริเวณนี้ไม่มีสัญญาณ", gps_why_timeout:"หาตำแหน่งไม่ทันเวลา ลองอีกครั้งในที่ที่มองเห็นท้องฟ้า", gps_fix_ios_safari:"[iPhone (Safari)]\n1. การตั้งค่า → ความเป็นส่วนตัวและความปลอดภัย → เปิดบริการหาตำแหน่ง\n2. ในหน้าเดียวกัน: «เว็บไซต์ Safari» → «ขณะใช้แอป»\n3. ใน Safari แตะปุ่มด้านซ้ายของแถบที่อยู่ → การตั้งค่าเว็บไซต์ → ตำแหน่ง → «อนุญาต»\n4. โหลดหน้าใหม่", gps_fix_ios_line:"[iPhone (เปิดอยู่ใน LINE)]\n1. การตั้งค่า → ความเป็นส่วนตัวและความปลอดภัย → บริการหาตำแหน่ง → LINE → «ขณะใช้แอป»\n2. หรือเปิดใน Safari จากเมนูมุมขวาบน\n3. โหลดหน้าใหม่", gps_fix_android_app:"[แอป Android]\n1. เปิดตำแหน่งในการตั้งค่าด่วน\n2. การตั้งค่า → แอป → MICHI-SHIRUBE → สิทธิ์ → ตำแหน่ง → «อนุญาตขณะใช้แอปเท่านั้น»\n3. กด «ลองอีกครั้ง» ด้านล่าง", gps_fix_android_browser:"[Android (Chrome ฯลฯ)]\n1. เปิดตำแหน่งในการตั้งค่าด่วน\n2. แตะไอคอนด้านซ้ายของแถบที่อยู่ → สิทธิ์ → ตำแหน่ง → «อนุญาต»\n3. โหลดหน้าใหม่", gps_fix_android_line:"[Android (เปิดอยู่ใน LINE)]\n1. การตั้งค่า → แอป → LINE → สิทธิ์ → ตำแหน่ง → «อนุญาตขณะใช้แอปเท่านั้น»\n2. หรือเปิดในเบราว์เซอร์จากเมนูมุมขวาบน\n3. โหลดหน้าใหม่", gps_fix_pc:"[คอมพิวเตอร์]\n1. คลิกไอคอนด้านซ้ายของแถบที่อยู่ → ตำแหน่ง → «อนุญาต»\n2. Windows: การตั้งค่า → ความเป็นส่วนตัวและความปลอดภัย → เปิดตำแหน่ง\n3. โหลดหน้าใหม่", gps_help_retry:"ลองอีกครั้ง", gps_help_close:"ปิด",
   search_placeholder:'🔍 ค้นหาที่อยู่/สถานที่', search_btn:'ค้นหา',
@@ -1428,6 +1461,7 @@ th: {
 },
 de: {
   gps_waiting:'📡 Warte auf GPS', gps_error:'📡 GPS-Fehler', gps_accuracy:'📡 Genauigkeit ±{m}m',
+  overwrite_save_btn:"Speichern (überschreiben)", save_as_btn:"Unter neuem Namen speichern", confirm_same_name_overwrite:"„{name}“ ist in diesem Ordner bereits vorhanden. Überschreiben?", alert_overwrite_success:"„{name}“ wurde überschrieben", delete_account_btn:"Konto löschen", confirm_delete_account:"Beim Löschen des Kontos werden alle deine Daten dauerhaft entfernt – Routen, feste Punkte, Fotos, Follows, Likes und Einstellungen. Das kann nicht rückgängig gemacht werden. Konto löschen?", prompt_delete_account_word:"Zur Bestätigung „{word}“ eingeben", alert_account_deleted:"Dein Konto wurde gelöscht", alert_account_delete_fail:"Konto konnte nicht gelöscht werden: {err}", delete_account_word:"LÖSCHEN",
   reach_arrived:"Angekommen: {name}", reach_next:"Nächster: {name}", reach_goal:"Ziel", notif_channel_name:"Navi-Ankünfte", bg_nav_message:"Navigation: Standort wird verwendet",
   gps_err_denied:"📡 Standort nicht erlaubt (tippen)", gps_err_unavailable:"📡 Standort nicht verfügbar (tippen)", gps_err_timeout:"📡 GPS-Zeitüberschreitung (tippen)", gps_help_title:"Standort kann nicht ermittelt werden", gps_why_denied:"Diese App darf deinen Standort nicht verwenden.", gps_why_unavailable:"Der Standort ist am Gerät ausgeschaltet oder hier gibt es kein Signal.", gps_why_timeout:"Dein Standort wurde nicht rechtzeitig gefunden. Versuche es dort erneut, wo der Himmel sichtbar ist.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Einstellungen → Datenschutz & Sicherheit → Ortungsdienste einschalten\n2. Im selben Bildschirm: „Safari-Websites“ → „Beim Verwenden der App“\n3. In Safari die Taste links neben der Adressleiste → Website-Einstellungen → Standort → „Erlauben“\n4. Seite neu laden", gps_fix_ios_line:"[iPhone (in LINE geöffnet)]\n1. Einstellungen → Datenschutz & Sicherheit → Ortungsdienste → LINE → „Beim Verwenden der App“\n2. Oder über das Menü oben rechts in Safari öffnen\n3. Seite neu laden", gps_fix_android_app:"[Android-App]\n1. Standort in den Schnelleinstellungen einschalten\n2. Einstellungen → Apps → MICHI-SHIRUBE → Berechtigungen → Standort → „Nur während der Nutzung der App zulassen“\n3. Unten auf „Erneut versuchen“ tippen", gps_fix_android_browser:"[Android (Chrome usw.)]\n1. Standort in den Schnelleinstellungen einschalten\n2. Symbol links neben der Adressleiste → Berechtigungen → Standort → „Zulassen“\n3. Seite neu laden", gps_fix_android_line:"[Android (in LINE geöffnet)]\n1. Einstellungen → Apps → LINE → Berechtigungen → Standort → „Nur während der Nutzung der App zulassen“\n2. Oder über das Menü oben rechts im Browser öffnen\n3. Seite neu laden", gps_fix_pc:"[Computer]\n1. Symbol links neben der Adressleiste → Standort → „Zulassen“\n2. Windows: Einstellungen → Datenschutz und Sicherheit → Standort einschalten\n3. Seite neu laden", gps_help_retry:"Erneut versuchen", gps_help_close:"Schließen",
   search_placeholder:'🔍 Adresse/Ort suchen', search_btn:'Suchen',
@@ -1484,6 +1518,7 @@ de: {
 },
 ru: {
   gps_waiting:'📡 Ожидание GPS', gps_error:'📡 Ошибка GPS', gps_accuracy:'📡 Точность ±{m}м',
+  overwrite_save_btn:"Сохранить (перезаписать)", save_as_btn:"Сохранить как новый", confirm_same_name_overwrite:"«{name}» уже есть в этой папке. Перезаписать?", alert_overwrite_success:"«{name}» перезаписан", delete_account_btn:"Удалить аккаунт", confirm_delete_account:"При удалении аккаунта все ваши данные — маршруты, точки, фото, подписки, отметки «нравится» и настройки — будут удалены без возможности восстановления. Удалить аккаунт?", prompt_delete_account_word:"Для подтверждения введите «{word}»", alert_account_deleted:"Аккаунт удалён", alert_account_delete_fail:"Не удалось удалить аккаунт: {err}", delete_account_word:"УДАЛИТЬ",
   reach_arrived:"Прибытие: {name}", reach_next:"Далее: {name}", reach_goal:"Финиш", notif_channel_name:"Уведомления о прибытии", bg_nav_message:"Навигация: используется ваше местоположение",
   gps_err_denied:"📡 Геопозиция запрещена (нажмите)", gps_err_unavailable:"📡 Геопозиция недоступна (нажмите)", gps_err_timeout:"📡 Время ожидания GPS истекло (нажмите)", gps_help_title:"Не удаётся определить местоположение", gps_why_denied:"Этому приложению не разрешено использовать геопозицию.", gps_why_unavailable:"Геолокация на устройстве выключена или здесь нет сигнала.", gps_why_timeout:"Не удалось вовремя определить местоположение. Попробуйте снова там, где видно небо.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Настройки → Конфиденциальность и безопасность → включите Службы геолокации\n2. На том же экране: «Веб-сайты Safari» → «При использовании приложения»\n3. В Safari нажмите кнопку слева от адресной строки → Настройки веб-сайта → Геопозиция → «Разрешить»\n4. Перезагрузите страницу", gps_fix_ios_line:"[iPhone (открыто внутри LINE)]\n1. Настройки → Конфиденциальность и безопасность → Службы геолокации → LINE → «При использовании приложения»\n2. Или откройте в Safari через меню в правом верхнем углу\n3. Перезагрузите страницу", gps_fix_android_app:"[Приложение Android]\n1. Включите геолокацию в быстрых настройках\n2. Настройки → Приложения → MICHI-SHIRUBE → Разрешения → Местоположение → «Разрешить только во время использования»\n3. Нажмите «Повторить» ниже", gps_fix_android_browser:"[Android (Chrome и др.)]\n1. Включите геолокацию в быстрых настройках\n2. Значок слева от адресной строки → Разрешения → Местоположение → «Разрешить»\n3. Перезагрузите страницу", gps_fix_android_line:"[Android (открыто внутри LINE)]\n1. Настройки → Приложения → LINE → Разрешения → Местоположение → «Разрешить только во время использования»\n2. Или откройте в браузере через меню в правом верхнем углу\n3. Перезагрузите страницу", gps_fix_pc:"[Компьютер]\n1. Значок слева от адресной строки → Местоположение → «Разрешить»\n2. Windows: Параметры → Конфиденциальность и защита → включите Расположение\n3. Перезагрузите страницу", gps_help_retry:"Повторить", gps_help_close:"Закрыть",
   search_placeholder:'🔍 Поиск адреса/места', search_btn:'Поиск',
@@ -1540,6 +1575,7 @@ ru: {
 },
 pt: {
   gps_waiting:'📡 Aguardando GPS', gps_error:'📡 Falha no GPS', gps_accuracy:'📡 Precisão ±{m}m',
+  overwrite_save_btn:"Salvar (substituir)", save_as_btn:"Salvar como novo", confirm_same_name_overwrite:"Já existe «{name}» nesta pasta. Substituir?", alert_overwrite_success:"«{name}» foi substituída", delete_account_btn:"Excluir conta", confirm_delete_account:"Ao excluir a conta, todos os seus dados — rotas, pontos fixos, fotos, seguidores, curtidas e configurações — serão apagados para sempre. Não é possível desfazer. Excluir a conta?", prompt_delete_account_word:"Para confirmar, digite «{word}»", alert_account_deleted:"Sua conta foi excluída", alert_account_delete_fail:"Não foi possível excluir a conta: {err}", delete_account_word:"EXCLUIR",
   reach_arrived:"Chegada: {name}", reach_next:"Próximo: {name}", reach_goal:"Destino", notif_channel_name:"Chegadas da navegação", bg_nav_message:"Navegando: usando sua localização",
   gps_err_denied:"📡 Localização não permitida (toque)", gps_err_unavailable:"📡 Localização indisponível (toque)", gps_err_timeout:"📡 Tempo do GPS esgotado (toque)", gps_help_title:"Não foi possível obter sua localização", gps_why_denied:"Este app não tem permissão para usar sua localização.", gps_why_unavailable:"A localização do aparelho está desativada ou não há sinal aqui.", gps_why_timeout:"Sua localização não foi encontrada a tempo. Tente de novo onde dê para ver o céu.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Ajustes → Privacidade e Segurança → ative Serviços de Localização\n2. Na mesma tela: «Sites do Safari» → «Durante o Uso do App»\n3. No Safari, toque no botão à esquerda da barra de endereço → Ajustes do Site → Localização → «Permitir»\n4. Recarregue a página", gps_fix_ios_line:"[iPhone (aberto dentro do LINE)]\n1. Ajustes → Privacidade e Segurança → Serviços de Localização → LINE → «Durante o Uso do App»\n2. Ou abra no Safari pelo menu no canto superior direito\n3. Recarregue a página", gps_fix_android_app:"[App Android]\n1. Ative a localização nas configurações rápidas\n2. Configurações → Apps → MICHI-SHIRUBE → Permissões → Local → «Permitir apenas durante o uso do app»\n3. Toque em «Tentar de novo» abaixo", gps_fix_android_browser:"[Android (Chrome etc.)]\n1. Ative a localização nas configurações rápidas\n2. Toque no ícone à esquerda da barra de endereço → Permissões → Local → «Permitir»\n3. Recarregue a página", gps_fix_android_line:"[Android (aberto dentro do LINE)]\n1. Configurações → Apps → LINE → Permissões → Local → «Permitir apenas durante o uso do app»\n2. Ou abra no navegador pelo menu no canto superior direito\n3. Recarregue a página", gps_fix_pc:"[Computador]\n1. Clique no ícone à esquerda da barra de endereço → Local → «Permitir»\n2. No Windows: Configurações → Privacidade e segurança → ative Localização\n3. Recarregue a página", gps_help_retry:"Tentar de novo", gps_help_close:"Fechar",
   search_placeholder:'🔍 Buscar endereço/local', search_btn:'Buscar',
@@ -1596,6 +1632,7 @@ pt: {
 },
 ar: {
   gps_waiting:'📡 في انتظار GPS', gps_error:'📡 فشل GPS', gps_accuracy:'📡 الدقة ±{m} م',
+  overwrite_save_btn:"حفظ (استبدال)", save_as_btn:"حفظ باسم جديد", confirm_same_name_overwrite:"يوجد «{name}» في هذا المجلد. هل تريد استبداله؟", alert_overwrite_success:"تم استبدال «{name}»", delete_account_btn:"حذف الحساب", confirm_delete_account:"حذف الحساب يزيل جميع بياناتك نهائيًا: المسارات والنقاط الثابتة والصور والمتابعات والإعجابات والإعدادات، ولا يمكن التراجع. هل تريد حذف حسابك؟", prompt_delete_account_word:"للتأكيد، اكتب «{word}»", alert_account_deleted:"تم حذف حسابك", alert_account_delete_fail:"تعذّر حذف الحساب: {err}", delete_account_word:"حذف",
   reach_arrived:"تم الوصول: {name}", reach_next:"التالي: {name}", reach_goal:"الوجهة", notif_channel_name:"إشعارات الوصول أثناء الملاحة", bg_nav_message:"جارٍ الملاحة: يتم استخدام موقعك",
   gps_err_denied:"📡 الموقع غير مسموح (اضغط)", gps_err_unavailable:"📡 الموقع غير متاح (اضغط)", gps_err_timeout:"📡 انتهت مهلة GPS (اضغط)", gps_help_title:"تعذّر تحديد موقعك", gps_why_denied:"هذا التطبيق غير مسموح له باستخدام موقعك.", gps_why_unavailable:"خدمة الموقع في الجهاز متوقفة، أو لا توجد إشارة هنا.", gps_why_timeout:"لم يُعثر على موقعك في الوقت المحدد. حاول مرة أخرى في مكان ترى فيه السماء.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. الإعدادات ← الخصوصية والأمن ← شغّل خدمات الموقع\n2. في الشاشة نفسها: «مواقع Safari» ← «أثناء استخدام التطبيق»\n3. في Safari اضغط الزر يسار شريط العنوان ← إعدادات موقع الويب ← الموقع ← «سماح»\n4. أعد تحميل الصفحة", gps_fix_ios_line:"[iPhone (مفتوح داخل LINE)]\n1. الإعدادات ← الخصوصية والأمن ← خدمات الموقع ← LINE ← «أثناء استخدام التطبيق»\n2. أو افتحه في Safari من القائمة أعلى اليمين\n3. أعد تحميل الصفحة", gps_fix_android_app:"[تطبيق Android]\n1. شغّل الموقع من الإعدادات السريعة\n2. الإعدادات ← التطبيقات ← MICHI-SHIRUBE ← الأذونات ← الموقع ← «السماح فقط أثناء استخدام التطبيق»\n3. اضغط «إعادة المحاولة» بالأسفل", gps_fix_android_browser:"[Android (Chrome وغيره)]\n1. شغّل الموقع من الإعدادات السريعة\n2. اضغط الأيقونة يسار شريط العنوان ← الأذونات ← الموقع ← «سماح»\n3. أعد تحميل الصفحة", gps_fix_android_line:"[Android (مفتوح داخل LINE)]\n1. الإعدادات ← التطبيقات ← LINE ← الأذونات ← الموقع ← «السماح فقط أثناء استخدام التطبيق»\n2. أو افتحه في المتصفح من القائمة أعلى اليمين\n3. أعد تحميل الصفحة", gps_fix_pc:"[الكمبيوتر]\n1. اضغط الأيقونة يسار شريط العنوان ← الموقع ← «سماح»\n2. في Windows: الإعدادات ← الخصوصية والأمان ← شغّل الموقع\n3. أعد تحميل الصفحة", gps_help_retry:"إعادة المحاولة", gps_help_close:"إغلاق",
   search_placeholder:'🔍 ابحث عن عنوان/مكان', search_btn:'بحث',
@@ -1652,6 +1689,7 @@ ar: {
 },
 it: {
   gps_waiting:'📡 In attesa del GPS', gps_error:'📡 GPS non riuscito', gps_accuracy:'📡 Precisione ±{m}m',
+  overwrite_save_btn:"Salva (sovrascrivi)", save_as_btn:"Salva con nome", confirm_same_name_overwrite:"«{name}» esiste già in questa cartella. Sovrascriverlo?", alert_overwrite_success:"«{name}» è stato sovrascritto", delete_account_btn:"Elimina account", confirm_delete_account:"Eliminando l’account verranno cancellati per sempre tutti i tuoi dati: percorsi, punti fissi, foto, follow, mi piace e impostazioni. Operazione irreversibile. Eliminare l’account?", prompt_delete_account_word:"Per confermare, digita «{word}»", alert_account_deleted:"Il tuo account è stato eliminato", alert_account_delete_fail:"Impossibile eliminare l’account: {err}", delete_account_word:"ELIMINA",
   reach_arrived:"Arrivato: {name}", reach_next:"Prossimo: {name}", reach_goal:"Arrivo", notif_channel_name:"Arrivi della navigazione", bg_nav_message:"Navigazione: posizione in uso",
   gps_err_denied:"📡 Posizione non consentita (tocca)", gps_err_unavailable:"📡 Posizione non disponibile (tocca)", gps_err_timeout:"📡 Tempo GPS scaduto (tocca)", gps_help_title:"Impossibile ottenere la tua posizione", gps_why_denied:"Questa app non ha il permesso di usare la tua posizione.", gps_why_unavailable:"La posizione del dispositivo è disattivata o qui non c’è segnale.", gps_why_timeout:"La posizione non è stata trovata in tempo. Riprova in un punto da cui si vede il cielo.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Impostazioni → Privacy e sicurezza → attiva Localizzazione\n2. Nella stessa schermata: «Siti web di Safari» → «Mentre usi l’app»\n3. In Safari tocca il pulsante a sinistra della barra degli indirizzi → Impostazioni sito web → Posizione → «Consenti»\n4. Ricarica la pagina", gps_fix_ios_line:"[iPhone (aperto dentro LINE)]\n1. Impostazioni → Privacy e sicurezza → Localizzazione → LINE → «Mentre usi l’app»\n2. Oppure aprilo in Safari dal menu in alto a destra\n3. Ricarica la pagina", gps_fix_android_app:"[App Android]\n1. Attiva la posizione dalle impostazioni rapide\n2. Impostazioni → App → MICHI-SHIRUBE → Autorizzazioni → Posizione → «Consenti solo mentre l’app è in uso»\n3. Premi «Riprova» qui sotto", gps_fix_android_browser:"[Android (Chrome ecc.)]\n1. Attiva la posizione dalle impostazioni rapide\n2. Tocca l’icona a sinistra della barra degli indirizzi → Autorizzazioni → Posizione → «Consenti»\n3. Ricarica la pagina", gps_fix_android_line:"[Android (aperto dentro LINE)]\n1. Impostazioni → App → LINE → Autorizzazioni → Posizione → «Consenti solo mentre l’app è in uso»\n2. Oppure aprilo nel browser dal menu in alto a destra\n3. Ricarica la pagina", gps_fix_pc:"[Computer]\n1. Clicca l’icona a sinistra della barra degli indirizzi → Posizione → «Consenti»\n2. Su Windows: Impostazioni → Privacy e sicurezza → attiva Posizione\n3. Ricarica la pagina", gps_help_retry:"Riprova", gps_help_close:"Chiudi",
   search_placeholder:'🔍 Cerca indirizzo/luogo', search_btn:'Cerca',
@@ -1708,6 +1746,7 @@ it: {
 },
 id: {
   gps_waiting:'📡 Menunggu GPS', gps_error:'📡 GPS gagal', gps_accuracy:'📡 Akurasi ±{m}m',
+  overwrite_save_btn:"Simpan (timpa)", save_as_btn:"Simpan sebagai baru", confirm_same_name_overwrite:"\"{name}\" sudah ada di folder ini. Timpa?", alert_overwrite_success:"\"{name}\" telah ditimpa", delete_account_btn:"Hapus akun", confirm_delete_account:"Menghapus akun akan menghapus semua data Anda secara permanen: rute, titik tetap, foto, ikutan, suka, dan pengaturan. Tidak dapat dibatalkan. Hapus akun?", prompt_delete_account_word:"Untuk konfirmasi, ketik \"{word}\"", alert_account_deleted:"Akun Anda telah dihapus", alert_account_delete_fail:"Tidak dapat menghapus akun: {err}", delete_account_word:"HAPUS",
   reach_arrived:"Tiba: {name}", reach_next:"Berikutnya: {name}", reach_goal:"Tujuan", notif_channel_name:"Notifikasi tiba saat navigasi", bg_nav_message:"Navigasi: menggunakan lokasi Anda",
   gps_err_denied:"📡 Lokasi tidak diizinkan (ketuk)", gps_err_unavailable:"📡 Lokasi tidak tersedia (ketuk)", gps_err_timeout:"📡 Waktu GPS habis (ketuk)", gps_help_title:"Tidak bisa mendapatkan lokasi Anda", gps_why_denied:"Aplikasi ini tidak diizinkan menggunakan lokasi Anda.", gps_why_unavailable:"Lokasi perangkat dimatikan, atau tidak ada sinyal di sini.", gps_why_timeout:"Lokasi tidak ditemukan tepat waktu. Coba lagi di tempat yang terlihat langit.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Pengaturan → Privasi & Keamanan → nyalakan Layanan Lokasi\n2. Di layar yang sama: «Situs Web Safari» → «Saat Menggunakan App»\n3. Di Safari, ketuk tombol di kiri bilah alamat → Pengaturan Situs Web → Lokasi → «Izinkan»\n4. Muat ulang halaman", gps_fix_ios_line:"[iPhone (dibuka di dalam LINE)]\n1. Pengaturan → Privasi & Keamanan → Layanan Lokasi → LINE → «Saat Menggunakan App»\n2. Atau buka di Safari dari menu kanan atas\n3. Muat ulang halaman", gps_fix_android_app:"[Aplikasi Android]\n1. Nyalakan Lokasi di setelan cepat\n2. Setelan → Aplikasi → MICHI-SHIRUBE → Izin → Lokasi → «Izinkan hanya saat aplikasi digunakan»\n3. Tekan «Coba lagi» di bawah", gps_fix_android_browser:"[Android (Chrome, dll.)]\n1. Nyalakan Lokasi di setelan cepat\n2. Ketuk ikon di kiri bilah alamat → Izin → Lokasi → «Izinkan»\n3. Muat ulang halaman", gps_fix_android_line:"[Android (dibuka di dalam LINE)]\n1. Setelan → Aplikasi → LINE → Izin → Lokasi → «Izinkan hanya saat aplikasi digunakan»\n2. Atau buka di browser dari menu kanan atas\n3. Muat ulang halaman", gps_fix_pc:"[Komputer]\n1. Klik ikon di kiri bilah alamat → Lokasi → «Izinkan»\n2. Windows: Pengaturan → Privasi & keamanan → nyalakan Lokasi\n3. Muat ulang halaman", gps_help_retry:"Coba lagi", gps_help_close:"Tutup",
   search_placeholder:'🔍 Cari alamat/tempat', search_btn:'Cari',
@@ -1764,6 +1803,7 @@ id: {
 },
 vi: {
   gps_waiting:'📡 Đang chờ GPS', gps_error:'📡 GPS lỗi', gps_accuracy:'📡 Độ chính xác ±{m}m',
+  overwrite_save_btn:"Lưu (ghi đè)", save_as_btn:"Lưu thành bản mới", confirm_same_name_overwrite:"\"{name}\" đã có trong thư mục này. Ghi đè?", alert_overwrite_success:"Đã ghi đè \"{name}\"", delete_account_btn:"Xóa tài khoản", confirm_delete_account:"Xóa tài khoản sẽ xóa vĩnh viễn mọi dữ liệu của bạn: tuyến đường, điểm cố định, ảnh, theo dõi, lượt thích và cài đặt. Không thể hoàn tác. Xóa tài khoản?", prompt_delete_account_word:"Để xác nhận, hãy nhập \"{word}\"", alert_account_deleted:"Đã xóa tài khoản", alert_account_delete_fail:"Không thể xóa tài khoản: {err}", delete_account_word:"XÓA",
   reach_arrived:"Đã đến: {name}", reach_next:"Tiếp theo: {name}", reach_goal:"Đích", notif_channel_name:"Thông báo đến nơi khi dẫn đường", bg_nav_message:"Đang dẫn đường: đang dùng vị trí của bạn",
   gps_err_denied:"📡 Chưa cho phép vị trí (chạm)", gps_err_unavailable:"📡 Không lấy được vị trí (chạm)", gps_err_timeout:"📡 GPS hết thời gian (chạm)", gps_help_title:"Không lấy được vị trí hiện tại", gps_why_denied:"Ứng dụng này chưa được phép dùng vị trí của bạn.", gps_why_unavailable:"Vị trí trên thiết bị đang tắt, hoặc ở đây không có tín hiệu.", gps_why_timeout:"Không tìm được vị trí kịp thời. Hãy thử lại ở nơi nhìn thấy bầu trời.", gps_fix_ios_safari:"[iPhone (Safari)]\n1. Cài đặt → Quyền riêng tư & Bảo mật → bật Dịch vụ định vị\n2. Trên cùng màn hình: «Trang web Safari» → «Khi dùng ứng dụng»\n3. Trong Safari, chạm nút bên trái thanh địa chỉ → Cài đặt trang web → Vị trí → «Cho phép»\n4. Tải lại trang", gps_fix_ios_line:"[iPhone (đang mở trong LINE)]\n1. Cài đặt → Quyền riêng tư & Bảo mật → Dịch vụ định vị → LINE → «Khi dùng ứng dụng»\n2. Hoặc mở bằng Safari từ menu góc trên bên phải\n3. Tải lại trang", gps_fix_android_app:"[Ứng dụng Android]\n1. Bật Vị trí trong cài đặt nhanh\n2. Cài đặt → Ứng dụng → MICHI-SHIRUBE → Quyền → Vị trí → «Chỉ cho phép khi dùng ứng dụng»\n3. Nhấn «Thử lại» bên dưới", gps_fix_android_browser:"[Android (Chrome, v.v.)]\n1. Bật Vị trí trong cài đặt nhanh\n2. Chạm biểu tượng bên trái thanh địa chỉ → Quyền → Vị trí → «Cho phép»\n3. Tải lại trang", gps_fix_android_line:"[Android (đang mở trong LINE)]\n1. Cài đặt → Ứng dụng → LINE → Quyền → Vị trí → «Chỉ cho phép khi dùng ứng dụng»\n2. Hoặc mở bằng trình duyệt từ menu góc trên bên phải\n3. Tải lại trang", gps_fix_pc:"[Máy tính]\n1. Nhấp biểu tượng bên trái thanh địa chỉ → Vị trí → «Cho phép»\n2. Windows: Cài đặt → Quyền riêng tư & bảo mật → bật Vị trí\n3. Tải lại trang", gps_help_retry:"Thử lại", gps_help_close:"Đóng",
   search_placeholder:'🔍 Tìm địa chỉ/địa điểm', search_btn:'Tìm kiếm',
@@ -1889,10 +1929,24 @@ const map = L.map('map', { center:[35.68,139.75], zoom:14, zoomControl:false,
 // ===== 地図タイル：Googleマップ（失敗/上限到達時はMapTilerにフォールバック） =====
 let googleLayer = null;
 let usingGoogleMap = false;
-let trafficLayerOn = false;
-let bicyclingLayerOn = false;
-let transitLayerOn = false;
-let currentMapType = 'roadmap';
+// 地図の表示（渋滞・公共交通機関・自転車）と地図の種類（端末に保存。ログイン中はその人の設定として同期）
+let savedLayers = (()=>{ try{ return JSON.parse(localStorage.getItem('navi_layers') || '{}'); }catch(e){ return {}; } })();
+let trafficLayerOn = !!savedLayers.traffic;
+let bicyclingLayerOn = !!savedLayers.bike;
+let transitLayerOn = !!savedLayers.transit;
+let currentMapType = localStorage.getItem('navi_map_type') || 'roadmap';
+function saveLayers(){ try{ localStorage.setItem('navi_layers', JSON.stringify({ traffic: trafficLayerOn, transit: transitLayerOn, bike: bicyclingLayerOn })); }catch(e){} }
+function syncMapTypeButtons(){
+  ['roadmap','satellite','terrain'].forEach(tp=>{
+    const btn = document.getElementById('maptype-'+tp);
+    const matches = (tp === currentMapType) || (tp === 'satellite' && currentMapType === 'hybrid');
+    if(btn) btn.classList.toggle('active', matches);
+  });
+}
+function syncLayerChecks(){
+  const set = (id, v)=>{ const el = document.getElementById(id); if(el) el.checked = !!v; };
+  set('layer-traffic-check', trafficLayerOn); set('layer-transit-check', transitLayerOn); set('layer-biking-check', bicyclingLayerOn);
+}
 
 function useMapTilerFallback(){
   if(usingGoogleMap) return;
@@ -1969,6 +2023,10 @@ function initGoogleLayer(){
     fitMutantForRotation();
     watchGoogleErrors();
     usingGoogleMap = true;
+    // 保存してあった表示（渋滞など）を出す
+    if(trafficLayerOn) googleLayer.addGoogleLayer('TrafficLayer');
+    if(transitLayerOn) googleLayer.addGoogleLayer('TransitLayer');
+    if(bicyclingLayerOn) googleLayer.addGoogleLayer('BicyclingLayer');
   }catch(e){
     console.warn('Googleマップ読み込み失敗、予備の地図に切り替え', e);
     switchToFallbackMap('Googleマップを作れない');
@@ -2071,13 +2129,10 @@ function setMapType(type){
   if(!usingGoogleMap){ alert(t('google_map_not_loaded')); return; }
   if(type === currentMapType) return;
   currentMapType = type;
+  try{ localStorage.setItem('navi_map_type', type); }catch(e){}
   // 地形・航空写真・標準はGoogleMutantの type を切り替えるためレイヤーを作り直す
   rebuildGoogleLayer();
-  ['roadmap','satellite','terrain'].forEach(t=>{
-    const btn = document.getElementById('maptype-'+t);
-    const matches = (t === currentMapType) || (t === 'satellite' && currentMapType === 'hybrid');
-    if(btn) btn.classList.toggle('active', matches);
-  });
+  syncMapTypeButtons();
 }
 
 function toggleTraffic(){
@@ -2085,6 +2140,7 @@ function toggleTraffic(){
   trafficLayerOn = document.getElementById('layer-traffic-check').checked;
   if(trafficLayerOn){ googleLayer.addGoogleLayer('TrafficLayer'); }
   else { googleLayer.removeGoogleLayer('TrafficLayer'); }
+  saveLayers();
 }
 
 function toggleTransit(){
@@ -2092,6 +2148,7 @@ function toggleTransit(){
   transitLayerOn = document.getElementById('layer-transit-check').checked;
   if(transitLayerOn){ googleLayer.addGoogleLayer('TransitLayer'); }
   else { googleLayer.removeGoogleLayer('TransitLayer'); }
+  saveLayers();
 }
 
 function toggleBicycling(){
@@ -2099,6 +2156,7 @@ function toggleBicycling(){
   bicyclingLayerOn = document.getElementById('layer-biking-check').checked;
   if(bicyclingLayerOn){ googleLayer.addGoogleLayer('BicyclingLayer'); }
   else { googleLayer.removeGoogleLayer('BicyclingLayer'); }
+  saveLayers();
 }
 
 // パネル外をクリックしたら閉じる
@@ -2265,12 +2323,14 @@ async function setCompassMode(mode){
       catch(e){ alert(t('compass_permission_denied')); return; }
     }
     compassMode = 'heading'; headingGotValue = false;
+    try{ localStorage.setItem('navi_compass', 'heading'); }catch(e){}
     headingTarget = null; headingShown = null; sensorSmooth = null; gpsCourseAt = 0; headingSource = '';
     window.addEventListener(ORIENT_EVENT, onDeviceHeadingWrap, true);
     // 2秒たっても向きが取れない端末（PCなど）は北固定に戻す
     setTimeout(()=>{ if(compassMode === 'heading' && !headingGotValue){ setCompassMode('north'); alert(t('compass_unsupported')); } }, 2000);
   } else {
     compassMode = 'north';
+    try{ localStorage.setItem('navi_compass', 'north'); }catch(e){}
     window.removeEventListener(ORIENT_EVENT, onDeviceHeadingWrap, true);
     headingTarget = null; headingShown = null;
     if(canRotateMap) map.setBearing(0);
@@ -2498,7 +2558,7 @@ map.on('dragstart',()=>{ followMode=false; document.getElementById('follow-btn')
 let overlayClosedAt = 0;
 map.on('popupclose', ()=>{ overlayClosedAt = Date.now(); });
 map.on('click', e=>{
-  if(inlineEdit){ endInlineEdit(); return; }   // 編集欄が開いている時の地図のタップは、閉じるだけ
+  if(inlineEdit) return;   // 編集画面が開いている時（暗い所が受け取る）   // 編集欄が開いている時の地図のタップは、閉じるだけ
   if(!addMode)return;
   if(Date.now() - overlayClosedAt < 700) return;
   if(map.closePopup && document.querySelector('.leaflet-popup')){ map.closePopup(); return; }
@@ -2699,6 +2759,10 @@ function showIconPicker(show, icon, meta){
   document.getElementById('fp-meta-row').style.display = show ? 'block' : 'none';
   if(!show) return;
   meta = meta || {};
+  // 新しく作る時（フォルダ・公開範囲の指定がない時）は、前回選んだものを使う
+  if(meta.group_id === undefined && meta.visibility === undefined){
+    try{ const l = JSON.parse(localStorage.getItem('navi_save_point_last') || '{}'); meta = { group_id: l.group_id || null, visibility: l.visibility || 'private' }; }catch(e){}
+  }
   fillGroupSelect(document.getElementById('fp-group'), 'point', meta.group_id || null);
   fillVisibilitySelect(document.getElementById('fp-visibility'), meta.visibility || 'private');
   if(!document.getElementById('icon-grid').children.length) buildIconGrid();
@@ -3124,23 +3188,51 @@ function addMarker(p,idx){
   p.marker=m;
 }
 
-// 地図のルートのポイントを押した時
-// ・編集中：地図の真ん中に寄せ、ルートリストのその番号を編集欄にする（パネルを閉じていたら「ルートリストだけ」で開き、終わったら閉じる）
-// ・編集中でない：地図の真ん中に寄せ、名前とメモの吹き出しを出し、ルートリストをその番号までスクロール（パネルは今のまま）
-function onRoutePointTap(p){
+// ===== ルートのポイントを選んだ時（地図のポイント・リストの番号） =====
+// 共通：地図をそのポイントへ（見えている部分の真ん中）・オレンジの輪で光らせる・ルートリストをその番号へスクロール
+// ・編集中：リストのその番号を編集欄にする（パネルを閉じていたら「ルートリストだけ」で開き、終わったらまた閉じる）
+// ・編集中でない：地図のポイントを押した時は名前とメモの吹き出しを出す（パネルを閉じていたら閉じたまま）
+function selectRoutePoint(p, from){
   const i = points.indexOf(p); if(i < 0) return;
-  if(addMode){ openInlineEdit(p.id); return; }
   followMode = false;
   document.getElementById('follow-btn').classList.remove('active');
-  panToVisible([p.lat, p.lng]);
-  showInfoPopup([p.lat, p.lng], (p.name || t('nav_point_default', {n: i+1})), p.memo);
-  scrollListToPoint(i);
+  panToVisible([p.lat, p.lng]);              // 倍率はそのまま、見えている部分の真ん中へ
+  flashMapPoint(p.lat, p.lng, pinColorOf(p)); // そのピンの色で光らせる
+  scrollListToPoint(i, 'top');                // その番号をパネルの一番上（取っ手のすぐ下）へ
+  if(addMode){ openInlineEdit(p.id, from); return; }
+  if(from === 'map') showInfoPopup([p.lat, p.lng], (p.name || t('nav_point_default', {n: i+1})), p.memo);
 }
-function scrollListToPoint(i){
+// ピンの色：選んだ色 → アイコンの色（固定ポイントの星・旗など）→ 既定のオレンジ
+function pinColorOf(p){
+  if(p && p.color) return p.color;
+  const m = p && typeof p.icon === 'string' ? p.icon.match(/#[0-9a-fA-F]{6}/) : null;
+  return m ? m[0] : '#ff9f1c';
+}
+function onRoutePointTap(p){ selectRoutePoint(p, 'map'); }
+// リストの行を、パネルの見えている部分に表示する（パネルの取っ手の下に隠れないように）
+// mode：'center' は見えている部分の真ん中、'top' は取っ手のすぐ下
+function scrollRowIntoPanel(el, mode){
+  if(!el) return;
+  let c = el.parentElement;
+  while(c && c !== document.body){
+    const oy = getComputedStyle(c).overflowY;
+    if((oy === 'auto' || oy === 'scroll') && c.scrollHeight > c.clientHeight) break;
+    c = c.parentElement;
+  }
+  if(!c || c === document.body){ el.scrollIntoView({ behavior:'smooth', block: mode === 'top' ? 'start' : 'center' }); return; }
+  const cr = c.getBoundingClientRect(), er = el.getBoundingClientRect();
+  let top = cr.top;
+  const handle = document.getElementById('panel-handle');
+  if(handle && c.contains(handle)){ const hr = handle.getBoundingClientRect(); if(hr.height) top = Math.max(top, hr.bottom); }
+  const visibleH = cr.bottom - top;
+  const want = mode === 'top' ? top + 8 : top + Math.max(8, (visibleH - er.height) / 2);
+  c.scrollBy({ top: er.top - want, behavior:'smooth' });
+}
+function scrollListToPoint(i, mode){
   if(panelState === 'hidden') return;   // パネルを閉じている時は動かさない
   setTimeout(()=>{
     const rows = document.querySelectorAll('#points-wrap .point-row');
-    if(rows[i]) rows[i].scrollIntoView({ behavior:'smooth', block:'center' });
+    scrollRowIntoPanel(rows[i], mode || 'center');
   }, 50);
 }
 
@@ -3913,39 +4005,32 @@ function toggleRouteMode(){
   updatePolyline();
 }
 
-// ===== ルートリストの中の編集欄 =====
-// ・編集中に地図のポイント（またはリストの番号）を押すと、リストのその番号の行が編集欄になる
+// ===== ポイントの編集（ポップアップ） =====
+// ・編集中に地図のポイント（またはリストの番号）を押すと、画面の上にポイントの編集画面が出る
 // ・名前・メモ・ピンの色と、そのポイントから次のポイントまでの区間（移動手段・線の色・線の種類）をここで変える
-// ・「保存」で反映。「キャンセル」か、編集欄の外を触ると反映せずに閉じる
-// ・パネルを閉じていた時は「ルートリストだけ」で開き、終わったらまた閉じる
+// ・画面に収まる大きさで出し、中身が多い時は中だけスクロール。「キャンセル」「保存」は下に常に見えている
+// ・「保存」で反映。「キャンセル」「✕」か、編集画面の外（暗い所）を押すと反映せずに閉じる
 let inlineEdit = null;   // { id, prevPanel, name, memo, color, segMode, segColor, segStyle }
 function ieEsc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
-function openInlineEdit(id){
+function openInlineEdit(id, from){
   _suppressMapClick = true;
   const i = points.findIndex(x=>x.id===id); if(i<0) return;
-  if(inlineEdit && inlineEdit.id === id) return;
   const p = points[i];
-  const prevPanel = inlineEdit ? inlineEdit.prevPanel : (panelState === 'hidden' ? 'hidden' : null);
-  inlineEdit = { id, prevPanel, name: p.name || '', memo: p.memo || '', color: p.color || null,
-    segMode: segModeOf(i), segColor: p.segColor || null, segStyle: p.segStyle || 'auto' };
-  if(panelState === 'hidden') setPanelState('list');
-  renderList();
-  // 地図をそのポイントに寄せる（追いかけは止める）
-  followMode = false;
-  document.getElementById('follow-btn').classList.remove('active');
-  panToVisible([p.lat, p.lng]);
-  setTimeout(()=>panToVisible([p.lat, p.lng]), 300);   // パネルを開いて地図の見える範囲が変わった後に、もう一度真ん中へ
-  // リストの編集欄が見えるようにする
-  setTimeout(()=>{ const box = document.getElementById('ie-box'); if(box) box.scrollIntoView({ behavior:'smooth', block:'nearest' }); }, 80);
+  inlineEdit = { id, name: p.name || '', memo: p.memo || '', color: p.color || null,
+    segMode: segModeOf(i), segColor: p.segColor || null, segStyle: p.segStyle || 'auto', openedAt: Date.now() };
+  document.getElementById('pe-title').textContent = t('point_label', {n: i+1});
+  renderPointEditorBody();
+  document.getElementById('pe-body').scrollTop = 0;
+  document.getElementById('pe-wrap').classList.add('show');
+  updateKbShift();
 }
-function inlineEditorHTML(p, i){
+// 編集画面の中身（名前・メモ・ピンの色・区間の設定）
+function pointEditorBodyHTML(p, i){
   const st = inlineEdit, isLinked = !!p.fixedPointId, hasSeg = i < points.length - 1;
   const colorChips = (cur, fn) =>
     SEG_COLOR_CHOICES.map(c=>`<button class="seg-color-btn${c===cur?' active':''}" style="background:${c};" onclick="${fn}('${c}')"></button>`).join('') +
     `<button class="ml-btn" onclick="${fn}('')">${t('seg_color_default')}</button>`;
-  let h = `<div class="point-row ie-row" id="ie-box">
-    <div class="point-num" style="flex-shrink:0;">${i+1}</div>
-    <div class="ie-body">`;
+  let h = '<div class="ie-body">';
   if(!isLinked){
     h += `<label style="margin-top:0;">${t('point_name_label')}</label>
       <input type="text" id="ie-name" autocomplete="off" value="${ieEsc(st.name)}" placeholder="${ieEsc(t('point_name_placeholder'))}" oninput="inlineEdit.name=this.value">
@@ -3974,25 +4059,22 @@ function inlineEditorHTML(p, i){
       }).join('')}</div>
     </div>`;
   }
-  h += `<div class="ie-btns">
-      <button class="ie-cancel" onclick="cancelInlineEdit()">${t('cancel_btn')}</button>
-      <button class="ie-save" onclick="saveInlineEdit()">${t('save_btn2')}</button>
-    </div>`;
   if(!isLinked) h += `<button class="ie-fixed" onclick="ieToFixed()">${t('save_as_fixed_btn')}</button>`;
-  h += `</div></div>`;
-  return h;
+  return h + '</div>';
 }
-// 色や移動手段を選んだ時は、編集欄だけを描き直す（入力中の文字はそのまま）
-function rerenderInlineEditor(){
-  const box = document.getElementById('ie-box'); if(!box || !inlineEdit) return;
+// 色や移動手段を選んだ時は、中身だけを描き直す（入力中の文字・スクロールの位置はそのまま）
+function renderPointEditorBody(){
+  if(!inlineEdit) return;
   const i = points.findIndex(x=>x.id===inlineEdit.id); if(i<0) return;
-  const tmp = document.createElement('div'); tmp.innerHTML = inlineEditorHTML(points[i], i);
-  box.replaceWith(tmp.firstElementChild);
+  const body = document.getElementById('pe-body'), top = body.scrollTop;
+  body.innerHTML = pointEditorBodyHTML(points[i], i);
+  body.scrollTop = top;
 }
-function iePickColor(c){ if(!inlineEdit) return; inlineEdit.color = c || null; rerenderInlineEditor(); }
-function iePickSegMode(m){ if(!inlineEdit) return; inlineEdit.segMode = m; rerenderInlineEditor(); }
-function iePickSegColor(c){ if(!inlineEdit) return; inlineEdit.segColor = c || null; rerenderInlineEditor(); }
-function iePickSegStyle(k){ if(!inlineEdit) return; inlineEdit.segStyle = k; rerenderInlineEditor(); }
+function rerenderInlineEditor(){ renderPointEditorBody(); }
+function iePickColor(c){ if(!inlineEdit) return; inlineEdit.color = c || null; renderPointEditorBody(); }
+function iePickSegMode(m){ if(!inlineEdit) return; inlineEdit.segMode = m; renderPointEditorBody(); }
+function iePickSegColor(c){ if(!inlineEdit) return; inlineEdit.segColor = c || null; renderPointEditorBody(); }
+function iePickSegStyle(k){ if(!inlineEdit) return; inlineEdit.segStyle = k; renderPointEditorBody(); }
 function saveInlineEdit(){
   const st = inlineEdit; if(!st) return;
   const i = points.findIndex(x=>x.id===st.id);
@@ -4013,13 +4095,13 @@ function saveInlineEdit(){
   endInlineEdit();
   refreshAllMarkers();
   updatePolyline();
+  renderList();
 }
 function cancelInlineEdit(){ if(inlineEdit) endInlineEdit(); }
-function endInlineEdit(restorePanel = true){
-  const st = inlineEdit; inlineEdit = null;
+function endInlineEdit(){
+  inlineEdit = null;
   overlayClosedAt = Date.now();   // 閉じるためのタップでは、新しいポイントを作らない
-  renderList();
-  if(restorePanel && st && st.prevPanel) setPanelState(st.prevPanel);   // パネルを閉じていた時は、また閉じる
+  document.getElementById('pe-wrap').classList.remove('show');
 }
 // 固定ポイントとつながったポイント：固定ポイントの編集画面を開く
 function ieOpenLinked(){
@@ -4037,23 +4119,6 @@ function ieToFixed(){
   document.getElementById('edit-popup-memo').value = st.memo;
   openConvertToFixedModal();
 }
-// 編集欄の外を押したら、キャンセル
-// ・指が触れた瞬間に閉じると、パネルが動いた後に「押した」が届き、指の下に来た別のボタン（フォロー・編集など）が押されてしまう。
-//   そのため「押した」の時点で閉じる（押されたボタンは、もう決まっている）
-// ・パネルの中を押した時は、パネルの開け閉めはその操作に任せる（元に戻さない）
-document.addEventListener('click', e=>{
-  if(!inlineEdit) return;
-  const box = document.getElementById('ie-box');
-  if(box && box.contains(e.target)) return;
-  const bottom = document.getElementById('bottom'), edge = document.getElementById('panel-edge');
-  const inPanel = (bottom && bottom.contains(e.target)) || (edge && edge.contains(e.target));
-  endInlineEdit(!inPanel);
-}, true);
-// パネルの取っ手・端のバーは、指で触った時に「押した」を止めている（ゴーストクリック対策）ので、触れた時点で閉じる（パネルは元に戻さない）
-['panel-handle','panel-edge'].forEach(id=>{
-  const el = document.getElementById(id);
-  if(el) el.addEventListener('pointerdown', ()=>{ if(inlineEdit) endInlineEdit(false); }, true);
-});
 
 // ===== ポイントリスト =====
 function renderList(){
@@ -4069,7 +4134,7 @@ function renderList(){
     const displayName=p.name||'';
     const isLinked = !!p.fixedPointId;
     const starPrefix = p.icon ? `<span style="display:inline-flex;align-items:center;">${iconHTML(p.icon,16)}</span>` : '';
-    const numOnclick = !addMode ? `focusPoint(${p.id})` : `openInlineEdit(${p.id})`;
+    const numOnclick = `selectRoutePoint(points.find(x=>x.id===${p.id}), 'list')`;
 
     // 先頭の前に挿入ボタン（ポイントが2つ以上の時のみ）
     if(addMode && i===0 && points.length>=2){
@@ -4077,14 +4142,6 @@ function renderList(){
     }
 
     const segDist = segmentDistances[i] != null ? formatDist(segmentDistances[i]) : '';
-    // 編集中のポイント：その行を編集欄にする（区間の設定もここで行うので、下の区間の行は出さない）
-    if(inlineEdit && inlineEdit.id === p.id){
-      html += inlineEditorHTML(p, i);
-      if(addMode && i<points.length-1 && points.length>=2){
-        html+=`<div class="insert-row"><button class="insert-btn" data-after="${i}" onclick="startInsertAt(${i})">＋</button></div>`;
-      }
-      return;
-    }
     html+=`<div class="point-row ${rowClass}">
       ${starPrefix}
       <div class="point-num ${numClass}" onclick="${numOnclick}" style="cursor:pointer;">${i+1}</div>
@@ -4127,17 +4184,18 @@ function focusPoint(id){
   if(!p)return;
   followMode=false;
   document.getElementById('follow-btn').classList.remove('active');
-  setViewVisible([p.lat,p.lng],Math.max(map.getZoom(),16));   // パネルに隠れない、見えている部分の真ん中に
-  flashMapPoint(p.lat, p.lng);
+  setViewVisible([p.lat,p.lng], map.getZoom());   // 倍率はそのまま、パネルに隠れない見えている部分の真ん中に
+  flashMapPoint(p.lat, p.lng, pinColorOf(p));
 }
 
-// 選んだポイントの場所で、オレンジの輪を3秒ほど広がらせて「ここです」と知らせる
+// 選んだポイントの場所で、そのピンの色の輪を3秒ほど広がらせて「ここです」と知らせる
 let mapFlashMarker = null, mapFlashTimer = null;
-function flashMapPoint(lat, lng){
+function flashMapPoint(lat, lng, color){
   if(mapFlashMarker){ map.removeLayer(mapFlashMarker); mapFlashMarker = null; }
   clearTimeout(mapFlashTimer);
+  const c = /^#[0-9a-fA-F]{6}$/.test(color || '') ? color : '#ff9f1c';   // そのピンの色（なければオレンジ）
   mapFlashMarker = L.marker([lat, lng], {
-    icon: L.divIcon({ html:'<div class="map-flash"><span></span><span></span></div>', iconSize:[64,64], iconAnchor:[32,32], className:'' }),
+    icon: L.divIcon({ html:`<div class="map-flash" style="--flash-color:${c};"><span></span><span></span></div>`, iconSize:[64,64], iconAnchor:[32,32], className:'' }),
     interactive:false, zIndexOffset:-100
   }).addTo(map);
   mapFlashTimer = setTimeout(()=>{ if(mapFlashMarker){ map.removeLayer(mapFlashMarker); mapFlashMarker = null; } }, 3300);
@@ -4245,7 +4303,7 @@ async function searchAddress(){
   followMode=false;
   document.getElementById('follow-btn').classList.remove('active');
   // 候補が全部入るように地図を広げる（1件だけならその場所へ移動）
-  if(results.length===1) setViewVisible([results[0].lat, results[0].lng], 16);
+  if(results.length===1) setViewVisible([results[0].lat, results[0].lng], map.getZoom());   // 倍率はそのまま
   else map.fitBounds(results.map(r=>[r.lat,r.lng]), {paddingTopLeft:fitPadTL(60), paddingBottomRight:fitPadBR(60), maxZoom:16});
 }
 
@@ -4256,7 +4314,7 @@ function renderSearchResults(){
     // 重なり順：自分の固定ポイント・ルート上のポイント（緑・オレンジ）を、地図の場所（ピンク）より手前に出す
     const m = L.marker([r.lat,r.lng],{icon:makeSearchIcon(r.kind, r.icon), zIndexOffset: r.kind==='place' ? 500 : 700}).addTo(map);
     m.bindTooltip(r.name,{direction:'top',offset:[0,-34]});
-    m.on('click', e=>{ L.DomEvent.stopPropagation(e); showSearchPopup(e.latlng, i); });
+    m.on('click', e=>{ L.DomEvent.stopPropagation(e); flashMapPoint(r.lat, r.lng, SEARCH_COLORS[r.kind] || SEARCH_COLORS.place); showSearchPopup(e.latlng, i); });
     return m;
   });
   el.innerHTML = `<div class="sr-head"><span>${t('search_results_title',{n:searchResults.length})}</span>
@@ -4286,7 +4344,8 @@ function gotoSearchResult(i){
   const r = searchResults[i]; if(!r) return;
   followMode=false;
   document.getElementById('follow-btn').classList.remove('active');
-  setViewVisible([r.lat,r.lng], Math.max(map.getZoom(),16));
+  setViewVisible([r.lat,r.lng], map.getZoom());   // 倍率はそのまま
+  flashMapPoint(r.lat, r.lng, SEARCH_COLORS[r.kind] || SEARCH_COLORS.place);   // その検索結果のピンの色で光らせる
   if(searchMarkers[i]) searchMarkers[i].openTooltip();
 }
 
@@ -4635,6 +4694,7 @@ function loadRoute(){
 }
 function clearAll(silent=false){
   if(!silent&&points.length&&!confirm(t('confirm_clear_all')))return;
+  openedRoute = null;   // 開いているルートを忘れる
   points.forEach(p=>{if(p.marker)map.removeLayer(p.marker);});
   points=[];clearPolylines();
   if(navActive)stopNav();
@@ -4644,7 +4704,7 @@ function clearAll(silent=false){
 // ===== スクロール矢印 =====
 function updateScrollBtns(){
   const el=document.getElementById('points-wrap');
-  const isPC=window.innerWidth>=900;
+  const isPC=window.matchMedia('(min-width:900px) and (min-height:600px)').matches;
   const btnL=document.getElementById('scroll-left');
   const btnR=document.getElementById('scroll-right');
   if(!isPC){btnL.style.display='none';btnR.style.display='none';return;}
@@ -4824,11 +4884,12 @@ map.on('click', function(){
 });
 
 // ===== 距離表示 =====
-let distUnit = 'km'; // 'km' or 'mi'
+let distUnit = (localStorage.getItem('navi_dist_unit') === 'mi') ? 'mi' : 'km'; // 'km' or 'mi'（保存する）
 let segmentDistances = []; // ポイント間の道路距離(m)
 
 function toggleDistUnit(){
   distUnit = distUnit==='km' ? 'mi' : 'km';
+  try{ localStorage.setItem('navi_dist_unit', distUnit); }catch(e){}
   document.getElementById('dist-unit-btn').textContent = distUnit;
   updateNavBar();
   renderList();
@@ -4990,18 +5051,225 @@ async function authSubmit(){
   }
 }
 
+// ===== ユーザーごとの設定 =====
+// ・ログインしている時は、下の設定を Supabase の user_settings（本人だけが読み書きできる表）に保存し、どの端末でも同じにする
+// ・ログインした時：その人の設定を読み込んで使う（まだ表にない時は、今の端末の設定をその人の設定として保存する）
+// ・ログインしていない時の設定（端末の設定）は、ログインした時に取っておき、ログアウトした時に戻す
+// ・設定を変えたら1秒後に保存。ネットがつながっていない時は、つながった時に保存する
+const SYNC_KEYS = [
+  'navi_map_type','navi_map_style','navi_map_hide_poi','navi_map_hide_labels','navi_map_label_mode','navi_layers',
+  'photo_map_mode','photo_on_reach',
+  'navi_last_point_color','navi_last_seg_mode','navi_seg_colors','navi_seg_styles',
+  'navi_save_route_last','navi_save_point_last',
+  'ml_sort_route','ml_sort_point','ml_expanded',
+  'navi_play','navi_dist_unit','navi_compass','navi_lang'
+];
+let settingsUser = null, settingsApplying = false, settingsTimer = null, settingsPending = false;
+function isSyncKey(k){ return SYNC_KEYS.includes(k) || (typeof gpsIconKey === 'function' && k === gpsIconKey()); }
+(function(){
+  // 端末への保存を見張り、同期する設定が変わったら保存の予約をする
+  const S = Storage.prototype, oSet = S.setItem, oRem = S.removeItem;
+  S.setItem = function(k, v){ oSet.call(this, k, v); if(this === window.localStorage && !settingsApplying && settingsUser && isSyncKey(k)) scheduleSettingsUpload(); };
+  S.removeItem = function(k){ oRem.call(this, k); if(this === window.localStorage && !settingsApplying && settingsUser && isSyncKey(k)) scheduleSettingsUpload(); };
+})();
+function settingsSnapshot(){
+  const o = {};
+  SYNC_KEYS.forEach(k=>{ const v = localStorage.getItem(k); if(v !== null) o[k] = v; });
+  return o;
+}
+function writeSettings(obj, gpsIcon){
+  settingsApplying = true;
+  try{
+    SYNC_KEYS.forEach(k=>{ if(obj && obj[k] != null) localStorage.setItem(k, String(obj[k])); else localStorage.removeItem(k); });
+    const gk = gpsIconKey();
+    if(gk && gpsIcon !== undefined){ if(gpsIcon) localStorage.setItem(gk, gpsIcon); else localStorage.removeItem(gk); }
+  } finally { settingsApplying = false; }
+}
+function scheduleSettingsUpload(){
+  clearTimeout(settingsTimer);
+  settingsTimer = setTimeout(uploadSettings, 1000);
+}
+async function uploadSettings(){
+  if(!currentUser || settingsUser !== currentUser.id) return;
+  const body = { user_id: currentUser.id, settings: settingsSnapshot(), gps_icon: localStorage.getItem(gpsIconKey()) || null, updated_at: new Date().toISOString() };
+  try{
+    const res = await supabaseFetch('/rest/v1/user_settings', { method:'POST', prefer:'resolution=merge-duplicates,return=minimal', body: JSON.stringify(body) });
+    settingsPending = !res.ok;
+  }catch(e){ settingsPending = true; }
+}
+window.addEventListener('online', ()=>{ if(settingsPending) uploadSettings(); });
+// ログイン・ログアウトに合わせて設定を切り替える（updateUserBar から呼ぶ）
+async function syncSettingsForUser(){
+  const uid = currentUser ? currentUser.id : null;
+  if(uid === settingsUser) return;
+  if(uid){
+    // 端末の設定（ログインしていない時の設定）を取っておく（すでに取ってあれば、そのまま）
+    if(localStorage.getItem('navi_device_settings') === null){
+      settingsApplying = true; try{ localStorage.setItem('navi_device_settings', JSON.stringify(settingsSnapshot())); } finally { settingsApplying = false; }
+    }
+    settingsUser = uid;
+    try{
+      const res = await supabaseFetch(`/rest/v1/user_settings?user_id=eq.${uid}&select=settings,gps_icon`);
+      const rows = res.ok ? await res.json() : null;
+      if(!currentUser || currentUser.id !== uid) return;
+      if(rows && rows.length){
+        writeSettings(rows[0].settings || {}, rows[0].gps_icon || null);
+        refreshAppFromSettings();
+      } else if(rows){
+        uploadSettings();   // 初めて：今の端末の設定を、この人の設定として保存する
+      }
+    }catch(e){ console.warn('設定の読み込み失敗', e); }
+  } else {
+    settingsUser = null;
+    clearTimeout(settingsTimer);
+    // 端末の設定に戻す
+    let dev = null;
+    try{ dev = JSON.parse(localStorage.getItem('navi_device_settings') || 'null'); }catch(e){}
+    if(dev){ writeSettings(dev); }
+    settingsApplying = true; try{ localStorage.removeItem('navi_device_settings'); } finally { settingsApplying = false; }
+    refreshAppFromSettings();
+  }
+}
+// 端末に書いた設定を、今の画面・地図に反映する
+function refreshAppFromSettings(){
+  const ls = k => localStorage.getItem(k);
+  // 地図
+  try{
+    currentMapStyle = ls('navi_map_style') || 'none';
+    mapHidePOI = ls('navi_map_hide_poi') === '1';
+    mapHideLabels = ls('navi_map_hide_labels') === '1';
+    try{ const m = ls('navi_map_label_mode'); mapLabelMode = ['all','names','none'].includes(m) ? m : (mapHideLabels ? 'none' : (mapHidePOI ? 'names' : 'all')); }catch(e){}
+    currentMapType = ls('navi_map_type') || 'roadmap';
+    const lay = (()=>{ try{ return JSON.parse(ls('navi_layers') || '{}'); }catch(e){ return {}; } })();
+    const turn = (on, was, name)=>{ if(googleLayer && on !== was){ if(on) googleLayer.addGoogleLayer(name); else googleLayer.removeGoogleLayer(name); } };
+    turn(!!lay.traffic, trafficLayerOn, 'TrafficLayer'); trafficLayerOn = !!lay.traffic;
+    turn(!!lay.transit, transitLayerOn, 'TransitLayer'); transitLayerOn = !!lay.transit;
+    turn(!!lay.bike, bicyclingLayerOn, 'BicyclingLayer'); bicyclingLayerOn = !!lay.bike;
+    syncLayerChecks(); syncMapTypeButtons();
+    if(typeof setMapStyleLabels === 'function') setMapStyleLabels();
+    if(usingGoogleMap) rebuildGoogleLayer();
+  }catch(e){ console.warn(e); }
+  // 線の既定の色・種類
+  try{ segUserColors = JSON.parse(ls('navi_seg_colors') || '{}'); }catch(e){ segUserColors = {}; }
+  try{ segUserStyles = JSON.parse(ls('navi_seg_styles') || '{}'); }catch(e){ segUserStyles = {}; }
+  try{ renderSegDefaultColors(); }catch(e){}
+  // 写真
+  try{ syncPhotoControls(); renderPhotoBadges(true); }catch(e){}
+  // マイリストで開いていたフォルダ
+  try{ expandedGroups = new Set(JSON.parse(ls('ml_expanded') || '[]')); }catch(e){ expandedGroups = new Set(); }
+  // 再生・録画
+  try{ applyPlaySettings(); }catch(e){}
+  // 距離の単位
+  distUnit = ls('navi_dist_unit') === 'mi' ? 'mi' : 'km';
+  try{ document.getElementById('dist-unit-btn').textContent = distUnit; updateNavBar(); }catch(e){}
+  // 現在地のアイコン
+  try{ loadGpsIconForUser(); }catch(e){}
+  // 地図の向き（許可を聞かずに使える端末だけ。iPhone は毎回ボタンで）
+  try{ restoreCompassMode(); }catch(e){}
+  try{ updatePolyline(); renderList(); }catch(e){}
+  // 言語：ルートを作っていない時だけ、すぐ切り替える（作っている時は次に開いた時）
+  const lang = ls('navi_lang');
+  if(lang && lang !== currentLang && SUPPORTED_LANGS.includes(lang) && !points.length) location.reload();
+}
+// 再生・録画の設定（速度・線の出し方・追いかけ・向きを回す・ピンを出す）
+function readPlaySettings(){ try{ return JSON.parse(localStorage.getItem('navi_play') || '{}'); }catch(e){ return {}; } }
+function applyPlaySettings(){
+  const p = readPlaySettings();
+  const sp = document.getElementById('play-speed'), lm = document.getElementById('play-line-mode');
+  if(p.speed && sp){ sp.value = String(p.speed); if(sp.value === String(p.speed)) playSpeed = parseFloat(p.speed); }
+  if(p.line && lm){ lm.value = p.line; if(lm.value === p.line) playLineMode = p.line; }
+  [['play-follow','follow'],['play-rotate','rotate'],['play-pins','pins']].forEach(([id, k])=>{ const el = document.getElementById(id); if(el && typeof p[k] === 'boolean') el.checked = p[k]; });
+}
+function savePlaySettings(){
+  const g = id => document.getElementById(id);
+  try{ localStorage.setItem('navi_play', JSON.stringify({ speed: g('play-speed').value, line: g('play-line-mode').value, follow: g('play-follow').checked, rotate: g('play-rotate').checked, pins: g('play-pins').checked })); }catch(e){}
+}
+['play-speed','play-line-mode','play-follow','play-rotate','play-pins'].forEach(id=>{ const el = document.getElementById(id); if(el) el.addEventListener('change', savePlaySettings); });
+// 地図の向きを戻す：スマホの向きにしていた時、許可を聞かずに使える端末（Android など）だけ
+function restoreCompassMode(){
+  const want = localStorage.getItem('navi_compass');
+  if(want === compassMode) return;
+  if(want === 'heading'){
+    const needPermission = window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function';
+    const touch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    if(!needPermission && touch && canRotateMap) setCompassMode('heading');
+  } else if(want === 'north' && compassMode === 'heading'){
+    setCompassMode('north');
+  }
+}
+applyPlaySettings(); syncMapTypeButtons(); syncLayerChecks();
+try{ document.getElementById('dist-unit-btn').textContent = distUnit; }catch(e){}
+setTimeout(()=>{ try{ restoreCompassMode(); }catch(e){} }, 1500);
+
+// ===== アカウントの削除 =====
+// 写真・アイコン・共有画像（その人のフォルダ）を消してから、アカウントを消す。
+// データベースのその人のデータ（ルート・固定ポイント・フォルダ・フォロー・いいね・設定など）は、アカウントと一緒に消える（すべて on delete cascade で確認済み）
+async function deleteStorageFolder(bucket, uid){
+  for(let round = 0; round < 20; round++){
+    const res = await supabaseFetch(`/storage/v1/object/list/${bucket}`, { method:'POST', body: JSON.stringify({ prefix: uid + '/', limit: 1000, offset: 0 }) });
+    if(!res.ok) return;
+    const list = await res.json();
+    const names = (list || []).filter(x=>x && x.name && x.id !== null).map(x=>`${uid}/${x.name}`);
+    if(!names.length) return;
+    await supabaseFetch(`/storage/v1/object/${bucket}`, { method:'DELETE', body: JSON.stringify({ prefixes: names }) });
+  }
+}
+async function deleteMyAccount(){
+  if(!currentUser) return;
+  if(!confirm(t('confirm_delete_account'))) return;
+  const word = t('delete_account_word');
+  const typed = prompt(t('prompt_delete_account_word', {word}));
+  if(typed === null || typed.trim() !== word) return;
+  const btn = document.getElementById('delete-account-btn'); if(btn) btn.disabled = true;
+  try{
+    const uid = currentUser.id;
+    for(const b of [PHOTO_BUCKET, SHARE_BUCKET, 'avatars']){ try{ await deleteStorageFolder(b, uid); }catch(e){ console.warn('ファイルの削除失敗', b, e); } }
+    const res = await supabaseFetch('/rest/v1/rpc/delete_my_account', { method:'POST', body:'{}' });
+    if(!res.ok) throw new Error(await res.text());
+    try{ localStorage.removeItem('navi_gps_icon_' + uid); }catch(e){}
+    document.getElementById('username-dialog').style.display = 'none';
+    authLogout();
+    alert(t('alert_account_deleted'));
+  }catch(e){
+    alert(t('alert_account_delete_fail', {err: e.message}));
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+// ログアウト：ルート・ナビ・編集など、その人の作業を全部止めて消し、端末の設定（ログインしていない時の設定）に戻す
 function authLogout(){
+  // 動いているものを止める
+  try{ if(typeof recActive !== 'undefined' && recActive && typeof exitRecMode === 'function') exitRecMode(); }catch(e){}
+  try{ if(typeof stopPlay === 'function') stopPlay(true); }catch(e){}
+  try{ if(navActive) stopNav(); }catch(e){}
+  // 開いている画面を閉じる
+  try{ if(inlineEdit) endInlineEdit(); }catch(e){}
+  try{ closeEditPopup(); }catch(e){}
+  try{ closePhotoCard(); }catch(e){}
+  try{ map.closePopup(); }catch(e){}
+  try{ document.getElementById('modal-overlay').classList.remove('show'); }catch(e){}
+  // 編集モードを終える
+  if(addMode){ addMode = false; try{ applyEditMode(); }catch(e){} }
+  // ルート（作成中・表示中）・検索
+  clearAll(true);
+  clearSearchResults();
+  const si = document.getElementById('search-input'); if(si) si.value = '';
+  // ログインの情報
   currentUser = null;
   authToken = null;
   refreshToken = null;
   localStorage.removeItem('navi_session');
   clearSavedPointMarkers();
-  routeGroups = []; pointGroups = []; myRoutes = [];
+  routeGroups = []; pointGroups = []; myRoutes = []; lastRouteGroupId = null;
   if(typeof cancelPreview==='function' && previewState) cancelPreview();
+  // 設定は updateUserBar → syncSettingsForUser で、端末の設定に戻す
+  try{ renderPhotoBadges(true); }catch(e){}
   updateUserBar();
 }
 
 function updateUserBar(){
+  syncSettingsForUser();  // ログイン・ログアウトに合わせて、その人の設定（端末の設定）に切り替え
   loadGpsIconForUser();   // ログイン・ログアウトに合わせて現在位置アイコンを切り替え
   refreshPremium();       // 有料会員かどうか（広告の表示に使う）
   if(typeof onAuthChangedFollow === 'function') onAuthChangedFollow();
@@ -5586,12 +5854,23 @@ async function supabaseFetch(path, options={}, _retried=false){
   return res;
 }
 
+// ===== ルートの保存（新しく・上書き・別名） =====
+// ・自分の保存済みルートを開いている時は「上書き保存」と「別名で保存」。新しく作ったルートは「保存」
+// ・同じフォルダに同じ名前の自分のルートがある時は「上書きしますか？」と聞く（PCのファイルと同じ考え方）
+// ・ログアウト・全部消す・別のルートを開いた時は、開いているルートを忘れる（別のルートを上書きしない）
+let openedRoute = null;   // { id, name, group_id, visibility }：自分の保存済みルートを開いている時
+function lastRouteSave(){ try{ return JSON.parse(localStorage.getItem('navi_save_route_last') || '{}'); }catch(e){ return {}; } }
 function showSaveDialog(){
   if(!points.length){ alert(t('alert_no_points')); return; }
   if(!currentUser){ showAuthScreen(); return; }
-  document.getElementById('save-route-name').value = '';
-  fillGroupSelect(document.getElementById('save-route-group'), 'route', lastRouteGroupId);
-  fillVisibilitySelect(document.getElementById('save-route-visibility'), 'private');
+  const last = lastRouteSave();
+  const o = openedRoute;
+  document.getElementById('save-route-name').value = o ? (o.name || '') : '';
+  fillGroupSelect(document.getElementById('save-route-group'), 'route', o ? o.group_id : (last.group_id || lastRouteGroupId));
+  fillVisibilitySelect(document.getElementById('save-route-visibility'), o ? (o.visibility || 'private') : (last.visibility || 'private'));
+  const nb = document.getElementById('save-new-btn'), ob = document.getElementById('save-over-btn');
+  nb.textContent = o ? t('save_as_btn') : t('save_btn2');
+  ob.style.display = o ? '' : 'none';
   document.getElementById('save-dialog').style.display = 'flex';
   setTimeout(()=>document.getElementById('save-route-name').focus(), 100);
 }
@@ -5600,29 +5879,39 @@ function closeSaveDialog(){
   document.getElementById('save-dialog').style.display = 'none';
 }
 
-async function saveToSupabase(){
+// mode：'new'＝保存・別名で保存／'overwrite'＝上書き保存
+async function saveToSupabase(mode){
   const name = document.getElementById('save-route-name').value.trim();
   if(!name){ alert(t('alert_route_name_required')); return; }
   const visibility = document.getElementById('save-route-visibility').value;
   const group_id = document.getElementById('save-route-group').value || null;
   lastRouteGroupId = group_id;
-  const data = {
-    name,
-    visibility,
-    is_public: visibility==='public',
-    group_id,
-    user_id: currentUser.id,
-    points: points.map(pointToSnapshot)
-  };
+  try{ localStorage.setItem('navi_save_route_last', JSON.stringify({ group_id, visibility })); }catch(e){}
+  const data = { name, visibility, is_public: visibility==='public', group_id, points: points.map(pointToSnapshot) };
   try {
-    const res = await supabaseFetch('/rest/v1/routes', {
-      method: 'POST',
-      prefer: 'return=minimal',
-      body: JSON.stringify(data)
-    });
+    // 同じフォルダに同じ名前の自分のルートがあるか
+    const q = `/rest/v1/routes?select=id&user_id=eq.${currentUser.id}&name=eq.${encodeURIComponent(name)}&group_id=${group_id ? 'eq.' + group_id : 'is.null'}`;
+    const same = await (await supabaseFetch(q)).json();
+    const sameId = Array.isArray(same) && same.length ? same[0].id : null;
+    let targetId = null;
+    if(sameId && !(mode === 'overwrite' && openedRoute && sameId === openedRoute.id)){
+      if(!confirm(t('confirm_same_name_overwrite', {name}))) return;   // 同じ名前のルートを上書きするか
+      targetId = sameId;
+    } else if(mode === 'overwrite' && openedRoute){
+      targetId = openedRoute.id;
+    }
+    let res, savedId = targetId;
+    if(targetId){
+      res = await supabaseFetch(`/rest/v1/routes?id=eq.${targetId}`, { method:'PATCH', prefer:'return=minimal', body: JSON.stringify(data) });
+    } else {
+      res = await supabaseFetch('/rest/v1/routes', { method:'POST', prefer:'return=representation', body: JSON.stringify(Object.assign({ user_id: currentUser.id }, data)) });
+    }
     if(res.ok){
+      if(!targetId){ const rows = await res.json(); savedId = rows && rows[0] ? rows[0].id : null; }
+      // 保存したルートを「開いているルート」にする（続けて上書き保存できる）
+      openedRoute = savedId ? { id: savedId, name, group_id, visibility } : null;
       closeSaveDialog();
-      alert(t('alert_save_success',{name}));
+      alert(targetId ? t('alert_overwrite_success',{name}) : t('alert_save_success',{name}));
     } else {
       const err = await res.json();
       alert(t('alert_save_fail',{err:JSON.stringify(err)}));
@@ -5729,6 +6018,7 @@ function getFixedMeta(){
   const group_id = document.getElementById('fp-group').value || null;
   const visibility = document.getElementById('fp-visibility').value || 'private';
   lastPointGroupId = group_id;
+  try{ localStorage.setItem('navi_save_point_last', JSON.stringify({ group_id, visibility })); }catch(e){}
   return { group_id, visibility, is_public: visibility==='public' };
 }
 
@@ -6347,8 +6637,8 @@ function focusSavedPoint(id){
   closeRouteList();
   followMode=false;
   document.getElementById('follow-btn').classList.remove('active');
-  setViewVisible([p.lat,p.lng], Math.max(map.getZoom(),16));
-  flashMapPoint(p.lat, p.lng);
+  setViewVisible([p.lat,p.lng], map.getZoom());   // 倍率はそのまま
+  flashMapPoint(p.lat, p.lng, pinColorOf(p));
 }
 
 function editSavedPointFromList(id){
@@ -7245,7 +7535,7 @@ function pointPopupHTML(name, memo, photo){
 // 全部入る大きさで、全ポイントの中心に一番近いポイントを中心にする
 function fitPointsAroundCenter(latlngs){
   if(!latlngs.length) return;
-  if(latlngs.length===1){ setViewVisible(latlngs[0], Math.max(map.getZoom(),16)); return; }
+  if(latlngs.length===1){ setViewVisible(latlngs[0], map.getZoom()); return; }   // 1か所だけの時は、倍率はそのまま
   const b = L.latLngBounds(latlngs);
   const c = b.getCenter();
   let best = latlngs[0], bestD = Infinity;
@@ -7324,7 +7614,7 @@ async function startPreview(state){
     document.getElementById('pv-include-row').style.display = hasVisibleFixed ? 'flex' : 'none';
     const lls = [];
     state.items.forEach(r=>(r.points||[]).forEach(d=>lls.push([d.lat,d.lng])));
-    if(lls.length===1) setViewVisible(lls[0], Math.max(map.getZoom(),16));
+    if(lls.length===1) setViewVisible(lls[0], map.getZoom());   // 1か所だけの時は、倍率はそのまま
     else if(lls.length) map.fitBounds(lls, {paddingTopLeft:fitPadTL(), paddingBottomRight:fitPadBR()});
     for(const r of state.items){ await drawPreviewRoute(r); }
   }
@@ -7614,6 +7904,9 @@ async function loadFromSupabase(id, silent){
     if(!data.length){ alert(t('alert_route_notfound')); return; }
     const route = data[0];
     clearAll(true);
+    // 自分のルートなら「開いているルート」として覚える（上書き保存できる）
+    openedRoute = (currentUser && route.user_id === currentUser.id)
+      ? { id: route.id, name: route.name, group_id: route.group_id || null, visibility: route.visibility || 'private' } : null;
     route.points.forEach((d,i)=>{
       const p=snapshotToPoint(d,i);
       addMarker(p,i); points.push(p);
