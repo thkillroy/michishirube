@@ -155,6 +155,9 @@ body.rec-mode #rec-exit { display:block; }
   #photo-card { top:calc(var(--ad-shift,0px) + 8px); left:calc(60px + env(safe-area-inset-left,0px)); transform:none; width:min(300px, 42vw); }
   #photo-card img { max-height:calc(100dvh - var(--ad-shift,0px) - 110px); }
 }
+#seg-warn { position:absolute; z-index:1001; top:calc(8px + var(--sat-map, var(--sat, env(safe-area-inset-top,0px)))); left:50%; transform:translateX(-50%); align-items:center; gap:8px; background:rgba(40,24,0,0.92); border:1px solid #ff9f1c; color:#ffd27a; border-radius:18px; padding:5px 6px 5px 12px; font-size:12px; white-space:nowrap; box-shadow:0 2px 8px rgba(0,0,0,0.5); }
+#seg-warn button { background:#ff9f1c; color:#000; border:none; border-radius:12px; padding:5px 10px; font-size:12px; font-weight:700; cursor:pointer; }
+body.rec-mode #seg-warn { display:none !important; }
 #gps-help { display:none; position:fixed; inset:0; z-index:10060; background:rgba(0,0,0,0.75); align-items:center; justify-content:center; padding:16px; }
 #gps-help .gh-card { width:100%; max-width:420px; max-height:90vh; overflow-y:auto; background:#12141a; border:1px solid #343b48; border-radius:14px; padding:16px; color:#e9e9ee; }
 #gps-help .gh-title { font-size:15px; font-weight:700; color:#ff9f1c; margin-bottom:8px; }
@@ -491,6 +494,7 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
 </script>
 
 <div id="map-wrap">
+  <div id="seg-warn" style="display:none;"><span id="seg-warn-text"></span><button onclick="retrySegsNow()" data-i18n="seg_warn_retry">取り直す</button></div>
   <div id="map"></div>
   <div id="panel-edge"><span id="panel-edge-text">▲ パネル ▲</span></div>
   <div id="play-bar">
@@ -1021,6 +1025,7 @@ const SUPPORTED_LANGS = ['ja','en','zh-CN','zh-TW','ko','es','fr','th','vi','de'
 const translations = {
 ja: {
   gps_waiting:'📡 GPS待機中', gps_error:'📡 GPS失敗', gps_accuracy:'📡 精度 ±{m}m',
+  err_email_registered:"登録済みのメールアドレスです。", seg_warn_text:"道の線が取れていない区間：{n}", seg_warn_retry:"取り直す",
   verify_title:"メールアドレスの確認", verify_sent:"{email} に認証番号を送りました。10分以内に入力してください。", verify_code_label:"認証番号", verify_btn:"確認して登録", verify_resend:"認証番号をもう一度送る", verify_resend_wait:"もう一度送れるまで {s} 秒", verify_resent:"認証番号をもう一度送りました", verify_back:"戻る", err_code_invalid:"認証番号が違うか、有効期限（10分）が切れています。", verify_not_confirmed:"メールアドレスの確認がまだです。届いた認証番号を入力してください。", verify_check_spam:"届かない時は、迷惑メールのフォルダも見てください。",
   overwrite_save_btn:"上書き保存", save_as_btn:"別名で保存", confirm_same_name_overwrite:"同じフォルダに「{name}」があります。上書きしますか？", alert_overwrite_success:"「{name}」を上書き保存しました", delete_account_btn:"アカウントを削除", confirm_delete_account:"アカウントを削除すると、ルート・固定ポイント・写真・フォロー・いいね・設定など、すべてのデータが消え、元に戻せません。本当に削除しますか？", prompt_delete_account_word:"確認のため「{word}」と入力してください", alert_account_deleted:"アカウントを削除しました", alert_account_delete_fail:"アカウントを削除できませんでした：{err}", delete_account_word:"削除",
   reach_arrived:"到着：{name}", reach_next:"次：{name}", reach_goal:"ゴール", notif_channel_name:"ナビの到着通知", bg_nav_message:"ナビ中：現在地を使っています",
@@ -1079,6 +1084,7 @@ ja: {
 },
 en: {
   gps_waiting:'📡 Waiting for GPS', gps_error:'📡 GPS failed', gps_accuracy:'📡 Accuracy ±{m}m',
+  err_email_registered:"This email address is already registered.", seg_warn_text:"Segments without a road line: {n}", seg_warn_retry:"Retry",
   verify_title:"Verify your email", verify_sent:"We sent a verification code to {email}. Enter it within 10 minutes.", verify_code_label:"Verification code", verify_btn:"Verify and sign up", verify_resend:"Send the code again", verify_resend_wait:"You can resend in {s} s", verify_resent:"We sent the code again", verify_back:"Back", err_code_invalid:"The code is wrong or has expired (10 minutes).", verify_not_confirmed:"Your email is not verified yet. Enter the code we sent you.", verify_check_spam:"If it does not arrive, check your spam folder.",
   overwrite_save_btn:"Save (overwrite)", save_as_btn:"Save as new", confirm_same_name_overwrite:"\"{name}\" already exists in this folder. Overwrite it?", alert_overwrite_success:"\"{name}\" was overwritten", delete_account_btn:"Delete account", confirm_delete_account:"Deleting your account permanently removes all your data, including routes, fixed points, photos, follows, likes and settings. This cannot be undone. Delete your account?", prompt_delete_account_word:"To confirm, type \"{word}\"", alert_account_deleted:"Your account has been deleted", alert_account_delete_fail:"Could not delete your account: {err}", delete_account_word:"DELETE",
   reach_arrived:"Arrived: {name}", reach_next:"Next: {name}", reach_goal:"Goal", notif_channel_name:"Navigation arrivals", bg_nav_message:"Navigating: using your location",
@@ -1137,6 +1143,7 @@ en: {
 },
 'zh-CN': {
   gps_waiting:'📡 等待GPS', gps_error:'📡 GPS失败', gps_accuracy:'📡 精度 ±{m}米',
+  err_email_registered:"该邮箱已注册。", seg_warn_text:"未获取道路线的路段：{n}", seg_warn_retry:"重新获取",
   verify_title:"验证邮箱", verify_sent:"验证码已发送至 {email}，请在10分钟内输入。", verify_code_label:"验证码", verify_btn:"验证并注册", verify_resend:"重新发送验证码", verify_resend_wait:"{s} 秒后可重新发送", verify_resent:"已重新发送验证码", verify_back:"返回", err_code_invalid:"验证码错误或已过期（10分钟）。", verify_not_confirmed:"邮箱尚未验证。请输入收到的验证码。", verify_check_spam:"如果没有收到，请查看垃圾邮件文件夹。",
   overwrite_save_btn:"覆盖保存", save_as_btn:"另存为", confirm_same_name_overwrite:"此文件夹中已有“{name}”。要覆盖吗？", alert_overwrite_success:"已覆盖保存“{name}”", delete_account_btn:"删除账号", confirm_delete_account:"删除账号后，路线、固定点、照片、关注、点赞、设置等所有数据都将被删除且无法恢复。确定要删除吗？", prompt_delete_account_word:"请输入“{word}”以确认", alert_account_deleted:"账号已删除", alert_account_delete_fail:"无法删除账号：{err}", delete_account_word:"删除",
   reach_arrived:"到达：{name}", reach_next:"下一个：{name}", reach_goal:"终点", notif_channel_name:"导航到达通知", bg_nav_message:"导航中：正在使用当前位置",
@@ -1195,6 +1202,7 @@ en: {
 },
 'zh-TW': {
   gps_waiting:'📡 等待GPS', gps_error:'📡 GPS失敗', gps_accuracy:'📡 精度 ±{m}公尺',
+  err_email_registered:"此電子郵件已註冊。", seg_warn_text:"未取得道路線的路段：{n}", seg_warn_retry:"重新取得",
   verify_title:"驗證電子郵件", verify_sent:"驗證碼已寄至 {email}，請在10分鐘內輸入。", verify_code_label:"驗證碼", verify_btn:"驗證並註冊", verify_resend:"重新寄送驗證碼", verify_resend_wait:"{s} 秒後可重新寄送", verify_resent:"已重新寄送驗證碼", verify_back:"返回", err_code_invalid:"驗證碼錯誤或已過期（10分鐘）。", verify_not_confirmed:"電子郵件尚未驗證。請輸入收到的驗證碼。", verify_check_spam:"若未收到，請查看垃圾郵件資料夾。",
   overwrite_save_btn:"覆寫儲存", save_as_btn:"另存新檔", confirm_same_name_overwrite:"此資料夾中已有「{name}」。要覆寫嗎？", alert_overwrite_success:"已覆寫儲存「{name}」", delete_account_btn:"刪除帳號", confirm_delete_account:"刪除帳號後，路線、固定點、照片、追蹤、按讚、設定等所有資料都會被刪除且無法復原。確定要刪除嗎？", prompt_delete_account_word:"請輸入「{word}」以確認", alert_account_deleted:"帳號已刪除", alert_account_delete_fail:"無法刪除帳號：{err}", delete_account_word:"刪除",
   reach_arrived:"抵達：{name}", reach_next:"下一個：{name}", reach_goal:"終點", notif_channel_name:"導航抵達通知", bg_nav_message:"導航中：正在使用目前位置",
@@ -1253,6 +1261,7 @@ en: {
 },
 ko: {
   gps_waiting:'📡 GPS 대기 중', gps_error:'📡 GPS 실패', gps_accuracy:'📡 정확도 ±{m}m',
+  err_email_registered:"이미 등록된 이메일 주소입니다.", seg_warn_text:"도로 선을 못 가져온 구간: {n}", seg_warn_retry:"다시 가져오기",
   verify_title:"이메일 확인", verify_sent:"{email}(으)로 인증번호를 보냈습니다. 10분 안에 입력하세요.", verify_code_label:"인증번호", verify_btn:"확인하고 가입", verify_resend:"인증번호 다시 보내기", verify_resend_wait:"{s}초 후 다시 보낼 수 있습니다", verify_resent:"인증번호를 다시 보냈습니다", verify_back:"돌아가기", err_code_invalid:"인증번호가 틀렸거나 유효시간(10분)이 지났습니다.", verify_not_confirmed:"이메일 확인이 아직 안 됐습니다. 받은 인증번호를 입력하세요.", verify_check_spam:"오지 않으면 스팸 폴더도 확인하세요.",
   overwrite_save_btn:"덮어쓰기 저장", save_as_btn:"다른 이름으로 저장", confirm_same_name_overwrite:"이 폴더에 \"{name}\"이(가) 이미 있습니다. 덮어쓸까요?", alert_overwrite_success:"\"{name}\"을(를) 덮어썼습니다", delete_account_btn:"계정 삭제", confirm_delete_account:"계정을 삭제하면 루트, 고정 포인트, 사진, 팔로우, 좋아요, 설정 등 모든 데이터가 삭제되며 되돌릴 수 없습니다. 정말 삭제할까요?", prompt_delete_account_word:"확인을 위해 \"{word}\"를 입력하세요", alert_account_deleted:"계정을 삭제했습니다", alert_account_delete_fail:"계정을 삭제할 수 없습니다: {err}", delete_account_word:"삭제",
   reach_arrived:"도착: {name}", reach_next:"다음: {name}", reach_goal:"목적지", notif_channel_name:"내비 도착 알림", bg_nav_message:"내비 중: 현재 위치를 사용하고 있습니다",
@@ -1311,6 +1320,7 @@ ko: {
 },
 es: {
   gps_waiting:'📡 Esperando GPS', gps_error:'📡 Error de GPS', gps_accuracy:'📡 Precisión ±{m}m',
+  err_email_registered:"Este correo ya está registrado.", seg_warn_text:"Tramos sin línea de calle: {n}", seg_warn_retry:"Reintentar",
   verify_title:"Verifica tu correo", verify_sent:"Enviamos un código a {email}. Escríbelo en 10 minutos.", verify_code_label:"Código de verificación", verify_btn:"Verificar y registrarme", verify_resend:"Enviar el código de nuevo", verify_resend_wait:"Podrás reenviarlo en {s} s", verify_resent:"Enviamos el código de nuevo", verify_back:"Volver", err_code_invalid:"El código es incorrecto o caducó (10 minutos).", verify_not_confirmed:"Tu correo aún no está verificado. Escribe el código que te enviamos.", verify_check_spam:"Si no llega, revisa la carpeta de spam.",
   overwrite_save_btn:"Guardar (sobrescribir)", save_as_btn:"Guardar como nuevo", confirm_same_name_overwrite:"Ya existe «{name}» en esta carpeta. ¿Sobrescribirlo?", alert_overwrite_success:"Se sobrescribió «{name}»", delete_account_btn:"Eliminar cuenta", confirm_delete_account:"Al eliminar tu cuenta se borran para siempre todos tus datos: rutas, puntos fijos, fotos, seguimientos, me gusta y ajustes. No se puede deshacer. ¿Eliminar tu cuenta?", prompt_delete_account_word:"Para confirmar, escribe «{word}»", alert_account_deleted:"Tu cuenta ha sido eliminada", alert_account_delete_fail:"No se pudo eliminar la cuenta: {err}", delete_account_word:"ELIMINAR",
   reach_arrived:"Llegada: {name}", reach_next:"Siguiente: {name}", reach_goal:"Meta", notif_channel_name:"Llegadas de navegación", bg_nav_message:"Navegando: usando tu ubicación",
@@ -1369,6 +1379,7 @@ es: {
 },
 fr: {
   gps_waiting:'📡 En attente du GPS', gps_error:'📡 Échec du GPS', gps_accuracy:'📡 Précision ±{m}m',
+  err_email_registered:"Cette adresse e-mail est déjà enregistrée.", seg_warn_text:"Tronçons sans tracé routier : {n}", seg_warn_retry:"Réessayer",
   verify_title:"Vérifiez votre e-mail", verify_sent:"Un code a été envoyé à {email}. Saisissez-le dans les 10 minutes.", verify_code_label:"Code de vérification", verify_btn:"Vérifier et s’inscrire", verify_resend:"Renvoyer le code", verify_resend_wait:"Renvoi possible dans {s} s", verify_resent:"Le code a été renvoyé", verify_back:"Retour", err_code_invalid:"Code incorrect ou expiré (10 minutes).", verify_not_confirmed:"Votre e-mail n’est pas encore vérifié. Saisissez le code reçu.", verify_check_spam:"S’il n’arrive pas, vérifiez vos spams.",
   overwrite_save_btn:"Enregistrer (remplacer)", save_as_btn:"Enregistrer sous", confirm_same_name_overwrite:"« {name} » existe déjà dans ce dossier. Le remplacer ?", alert_overwrite_success:"« {name} » a été remplacé", delete_account_btn:"Supprimer le compte", confirm_delete_account:"La suppression du compte efface définitivement toutes vos données : itinéraires, points fixes, photos, abonnements, j’aime et réglages. Action irréversible. Supprimer votre compte ?", prompt_delete_account_word:"Pour confirmer, saisissez « {word} »", alert_account_deleted:"Votre compte a été supprimé", alert_account_delete_fail:"Impossible de supprimer le compte : {err}", delete_account_word:"SUPPRIMER",
   reach_arrived:"Arrivé : {name}", reach_next:"Suivant : {name}", reach_goal:"Arrivée", notif_channel_name:"Arrivées de navigation", bg_nav_message:"Navigation : utilisation de votre position",
@@ -1427,6 +1438,7 @@ fr: {
 },
 th: {
   gps_waiting:'📡 กำลังรอ GPS', gps_error:'📡 GPS ล้มเหลว', gps_accuracy:'📡 ความแม่นยำ ±{m}ม.',
+  err_email_registered:"อีเมลนี้ลงทะเบียนแล้ว", seg_warn_text:"ช่วงที่ยังไม่ได้เส้นถนน: {n}", seg_warn_retry:"ลองใหม่",
   verify_title:"ยืนยันอีเมล", verify_sent:"ส่งรหัสยืนยันไปที่ {email} แล้ว โปรดกรอกภายใน 10 นาที", verify_code_label:"รหัสยืนยัน", verify_btn:"ยืนยันและสมัคร", verify_resend:"ส่งรหัสอีกครั้ง", verify_resend_wait:"ส่งอีกครั้งได้ใน {s} วินาที", verify_resent:"ส่งรหัสอีกครั้งแล้ว", verify_back:"กลับ", err_code_invalid:"รหัสไม่ถูกต้องหรือหมดอายุ (10 นาที)", verify_not_confirmed:"ยังไม่ได้ยืนยันอีเมล โปรดกรอกรหัสที่ได้รับ", verify_check_spam:"หากไม่ได้รับ โปรดตรวจสอบโฟลเดอร์สแปม",
   overwrite_save_btn:"บันทึกทับ", save_as_btn:"บันทึกเป็นชื่อใหม่", confirm_same_name_overwrite:"มี \"{name}\" อยู่ในโฟลเดอร์นี้แล้ว ต้องการบันทึกทับหรือไม่?", alert_overwrite_success:"บันทึกทับ \"{name}\" แล้ว", delete_account_btn:"ลบบัญชี", confirm_delete_account:"การลบบัญชีจะลบข้อมูลทั้งหมด เช่น เส้นทาง จุดถาวร รูปภาพ การติดตาม ถูกใจ และการตั้งค่า อย่างถาวรและกู้คืนไม่ได้ ต้องการลบบัญชีหรือไม่?", prompt_delete_account_word:"พิมพ์ \"{word}\" เพื่อยืนยัน", alert_account_deleted:"ลบบัญชีแล้ว", alert_account_delete_fail:"ไม่สามารถลบบัญชีได้: {err}", delete_account_word:"ลบ",
   reach_arrived:"ถึงแล้ว: {name}", reach_next:"ถัดไป: {name}", reach_goal:"ปลายทาง", notif_channel_name:"แจ้งเตือนเมื่อถึงจุดระหว่างนำทาง", bg_nav_message:"กำลังนำทาง: กำลังใช้ตำแหน่งของคุณ",
@@ -1485,6 +1497,7 @@ th: {
 },
 de: {
   gps_waiting:'📡 Warte auf GPS', gps_error:'📡 GPS-Fehler', gps_accuracy:'📡 Genauigkeit ±{m}m',
+  err_email_registered:"Diese E-Mail-Adresse ist bereits registriert.", seg_warn_text:"Abschnitte ohne Straßenlinie: {n}", seg_warn_retry:"Erneut laden",
   verify_title:"E-Mail bestätigen", verify_sent:"Wir haben einen Code an {email} gesendet. Gib ihn innerhalb von 10 Minuten ein.", verify_code_label:"Bestätigungscode", verify_btn:"Bestätigen und registrieren", verify_resend:"Code erneut senden", verify_resend_wait:"Erneut senden in {s} s", verify_resent:"Code wurde erneut gesendet", verify_back:"Zurück", err_code_invalid:"Der Code ist falsch oder abgelaufen (10 Minuten).", verify_not_confirmed:"Deine E-Mail ist noch nicht bestätigt. Gib den erhaltenen Code ein.", verify_check_spam:"Falls nichts ankommt, prüfe den Spam-Ordner.",
   overwrite_save_btn:"Speichern (überschreiben)", save_as_btn:"Unter neuem Namen speichern", confirm_same_name_overwrite:"„{name}“ ist in diesem Ordner bereits vorhanden. Überschreiben?", alert_overwrite_success:"„{name}“ wurde überschrieben", delete_account_btn:"Konto löschen", confirm_delete_account:"Beim Löschen des Kontos werden alle deine Daten dauerhaft entfernt – Routen, feste Punkte, Fotos, Follows, Likes und Einstellungen. Das kann nicht rückgängig gemacht werden. Konto löschen?", prompt_delete_account_word:"Zur Bestätigung „{word}“ eingeben", alert_account_deleted:"Dein Konto wurde gelöscht", alert_account_delete_fail:"Konto konnte nicht gelöscht werden: {err}", delete_account_word:"LÖSCHEN",
   reach_arrived:"Angekommen: {name}", reach_next:"Nächster: {name}", reach_goal:"Ziel", notif_channel_name:"Navi-Ankünfte", bg_nav_message:"Navigation: Standort wird verwendet",
@@ -1543,6 +1556,7 @@ de: {
 },
 ru: {
   gps_waiting:'📡 Ожидание GPS', gps_error:'📡 Ошибка GPS', gps_accuracy:'📡 Точность ±{m}м',
+  err_email_registered:"Этот адрес уже зарегистрирован.", seg_warn_text:"Участки без линии дороги: {n}", seg_warn_retry:"Повторить",
   verify_title:"Подтвердите почту", verify_sent:"Мы отправили код на {email}. Введите его в течение 10 минут.", verify_code_label:"Код подтверждения", verify_btn:"Подтвердить и зарегистрироваться", verify_resend:"Отправить код ещё раз", verify_resend_wait:"Повторно через {s} с", verify_resent:"Код отправлен ещё раз", verify_back:"Назад", err_code_invalid:"Код неверный или истёк (10 минут).", verify_not_confirmed:"Почта ещё не подтверждена. Введите полученный код.", verify_check_spam:"Если письма нет, проверьте папку «Спам».",
   overwrite_save_btn:"Сохранить (перезаписать)", save_as_btn:"Сохранить как новый", confirm_same_name_overwrite:"«{name}» уже есть в этой папке. Перезаписать?", alert_overwrite_success:"«{name}» перезаписан", delete_account_btn:"Удалить аккаунт", confirm_delete_account:"При удалении аккаунта все ваши данные — маршруты, точки, фото, подписки, отметки «нравится» и настройки — будут удалены без возможности восстановления. Удалить аккаунт?", prompt_delete_account_word:"Для подтверждения введите «{word}»", alert_account_deleted:"Аккаунт удалён", alert_account_delete_fail:"Не удалось удалить аккаунт: {err}", delete_account_word:"УДАЛИТЬ",
   reach_arrived:"Прибытие: {name}", reach_next:"Далее: {name}", reach_goal:"Финиш", notif_channel_name:"Уведомления о прибытии", bg_nav_message:"Навигация: используется ваше местоположение",
@@ -1601,6 +1615,7 @@ ru: {
 },
 pt: {
   gps_waiting:'📡 Aguardando GPS', gps_error:'📡 Falha no GPS', gps_accuracy:'📡 Precisão ±{m}m',
+  err_email_registered:"Este e-mail já está cadastrado.", seg_warn_text:"Trechos sem linha de rua: {n}", seg_warn_retry:"Tentar de novo",
   verify_title:"Confirme seu e-mail", verify_sent:"Enviamos um código para {email}. Digite em até 10 minutos.", verify_code_label:"Código de verificação", verify_btn:"Verificar e cadastrar", verify_resend:"Enviar o código de novo", verify_resend_wait:"Reenvio em {s} s", verify_resent:"Enviamos o código de novo", verify_back:"Voltar", err_code_invalid:"Código incorreto ou expirado (10 minutos).", verify_not_confirmed:"Seu e-mail ainda não foi confirmado. Digite o código recebido.", verify_check_spam:"Se não chegar, veja a pasta de spam.",
   overwrite_save_btn:"Salvar (substituir)", save_as_btn:"Salvar como novo", confirm_same_name_overwrite:"Já existe «{name}» nesta pasta. Substituir?", alert_overwrite_success:"«{name}» foi substituída", delete_account_btn:"Excluir conta", confirm_delete_account:"Ao excluir a conta, todos os seus dados — rotas, pontos fixos, fotos, seguidores, curtidas e configurações — serão apagados para sempre. Não é possível desfazer. Excluir a conta?", prompt_delete_account_word:"Para confirmar, digite «{word}»", alert_account_deleted:"Sua conta foi excluída", alert_account_delete_fail:"Não foi possível excluir a conta: {err}", delete_account_word:"EXCLUIR",
   reach_arrived:"Chegada: {name}", reach_next:"Próximo: {name}", reach_goal:"Destino", notif_channel_name:"Chegadas da navegação", bg_nav_message:"Navegando: usando sua localização",
@@ -1659,6 +1674,7 @@ pt: {
 },
 ar: {
   gps_waiting:'📡 في انتظار GPS', gps_error:'📡 فشل GPS', gps_accuracy:'📡 الدقة ±{m} م',
+  err_email_registered:"هذا البريد الإلكتروني مسجّل بالفعل.", seg_warn_text:"مقاطع بلا خط طريق: {n}", seg_warn_retry:"إعادة المحاولة",
   verify_title:"تأكيد البريد الإلكتروني", verify_sent:"أرسلنا رمز تحقق إلى {email}. أدخله خلال 10 دقائق.", verify_code_label:"رمز التحقق", verify_btn:"تحقق وسجّل", verify_resend:"أعد إرسال الرمز", verify_resend_wait:"يمكنك إعادة الإرسال بعد {s} ث", verify_resent:"أعدنا إرسال الرمز", verify_back:"رجوع", err_code_invalid:"الرمز غير صحيح أو انتهت صلاحيته (10 دقائق).", verify_not_confirmed:"لم يتم تأكيد بريدك بعد. أدخل الرمز الذي وصلك.", verify_check_spam:"إن لم يصل، تحقق من مجلد الرسائل غير المرغوب فيها.",
   overwrite_save_btn:"حفظ (استبدال)", save_as_btn:"حفظ باسم جديد", confirm_same_name_overwrite:"يوجد «{name}» في هذا المجلد. هل تريد استبداله؟", alert_overwrite_success:"تم استبدال «{name}»", delete_account_btn:"حذف الحساب", confirm_delete_account:"حذف الحساب يزيل جميع بياناتك نهائيًا: المسارات والنقاط الثابتة والصور والمتابعات والإعجابات والإعدادات، ولا يمكن التراجع. هل تريد حذف حسابك؟", prompt_delete_account_word:"للتأكيد، اكتب «{word}»", alert_account_deleted:"تم حذف حسابك", alert_account_delete_fail:"تعذّر حذف الحساب: {err}", delete_account_word:"حذف",
   reach_arrived:"تم الوصول: {name}", reach_next:"التالي: {name}", reach_goal:"الوجهة", notif_channel_name:"إشعارات الوصول أثناء الملاحة", bg_nav_message:"جارٍ الملاحة: يتم استخدام موقعك",
@@ -1717,6 +1733,7 @@ ar: {
 },
 it: {
   gps_waiting:'📡 In attesa del GPS', gps_error:'📡 GPS non riuscito', gps_accuracy:'📡 Precisione ±{m}m',
+  err_email_registered:"Questa email è già registrata.", seg_warn_text:"Tratti senza linea stradale: {n}", seg_warn_retry:"Riprova",
   verify_title:"Verifica la tua email", verify_sent:"Abbiamo inviato un codice a {email}. Inseriscilo entro 10 minuti.", verify_code_label:"Codice di verifica", verify_btn:"Verifica e registrati", verify_resend:"Invia di nuovo il codice", verify_resend_wait:"Puoi reinviare tra {s} s", verify_resent:"Codice inviato di nuovo", verify_back:"Indietro", err_code_invalid:"Codice errato o scaduto (10 minuti).", verify_not_confirmed:"La tua email non è ancora verificata. Inserisci il codice ricevuto.", verify_check_spam:"Se non arriva, controlla la cartella spam.",
   overwrite_save_btn:"Salva (sovrascrivi)", save_as_btn:"Salva con nome", confirm_same_name_overwrite:"«{name}» esiste già in questa cartella. Sovrascriverlo?", alert_overwrite_success:"«{name}» è stato sovrascritto", delete_account_btn:"Elimina account", confirm_delete_account:"Eliminando l’account verranno cancellati per sempre tutti i tuoi dati: percorsi, punti fissi, foto, follow, mi piace e impostazioni. Operazione irreversibile. Eliminare l’account?", prompt_delete_account_word:"Per confermare, digita «{word}»", alert_account_deleted:"Il tuo account è stato eliminato", alert_account_delete_fail:"Impossibile eliminare l’account: {err}", delete_account_word:"ELIMINA",
   reach_arrived:"Arrivato: {name}", reach_next:"Prossimo: {name}", reach_goal:"Arrivo", notif_channel_name:"Arrivi della navigazione", bg_nav_message:"Navigazione: posizione in uso",
@@ -1775,6 +1792,7 @@ it: {
 },
 id: {
   gps_waiting:'📡 Menunggu GPS', gps_error:'📡 GPS gagal', gps_accuracy:'📡 Akurasi ±{m}m',
+  err_email_registered:"Email ini sudah terdaftar.", seg_warn_text:"Ruas tanpa garis jalan: {n}", seg_warn_retry:"Coba lagi",
   verify_title:"Verifikasi email", verify_sent:"Kami mengirim kode ke {email}. Masukkan dalam 10 menit.", verify_code_label:"Kode verifikasi", verify_btn:"Verifikasi dan daftar", verify_resend:"Kirim ulang kode", verify_resend_wait:"Bisa kirim ulang dalam {s} dtk", verify_resent:"Kode sudah dikirim ulang", verify_back:"Kembali", err_code_invalid:"Kode salah atau sudah kedaluwarsa (10 menit).", verify_not_confirmed:"Email belum diverifikasi. Masukkan kode yang diterima.", verify_check_spam:"Jika tidak datang, periksa folder spam.",
   overwrite_save_btn:"Simpan (timpa)", save_as_btn:"Simpan sebagai baru", confirm_same_name_overwrite:"\"{name}\" sudah ada di folder ini. Timpa?", alert_overwrite_success:"\"{name}\" telah ditimpa", delete_account_btn:"Hapus akun", confirm_delete_account:"Menghapus akun akan menghapus semua data Anda secara permanen: rute, titik tetap, foto, ikutan, suka, dan pengaturan. Tidak dapat dibatalkan. Hapus akun?", prompt_delete_account_word:"Untuk konfirmasi, ketik \"{word}\"", alert_account_deleted:"Akun Anda telah dihapus", alert_account_delete_fail:"Tidak dapat menghapus akun: {err}", delete_account_word:"HAPUS",
   reach_arrived:"Tiba: {name}", reach_next:"Berikutnya: {name}", reach_goal:"Tujuan", notif_channel_name:"Notifikasi tiba saat navigasi", bg_nav_message:"Navigasi: menggunakan lokasi Anda",
@@ -1833,6 +1851,7 @@ id: {
 },
 vi: {
   gps_waiting:'📡 Đang chờ GPS', gps_error:'📡 GPS lỗi', gps_accuracy:'📡 Độ chính xác ±{m}m',
+  err_email_registered:"Email này đã được đăng ký.", seg_warn_text:"Đoạn chưa có đường đi: {n}", seg_warn_retry:"Thử lại",
   verify_title:"Xác minh email", verify_sent:"Đã gửi mã xác minh tới {email}. Hãy nhập trong 10 phút.", verify_code_label:"Mã xác minh", verify_btn:"Xác minh và đăng ký", verify_resend:"Gửi lại mã", verify_resend_wait:"Có thể gửi lại sau {s} giây", verify_resent:"Đã gửi lại mã", verify_back:"Quay lại", err_code_invalid:"Mã sai hoặc đã hết hạn (10 phút).", verify_not_confirmed:"Email chưa được xác minh. Hãy nhập mã đã nhận.", verify_check_spam:"Nếu không nhận được, hãy xem thư mục spam.",
   overwrite_save_btn:"Lưu (ghi đè)", save_as_btn:"Lưu thành bản mới", confirm_same_name_overwrite:"\"{name}\" đã có trong thư mục này. Ghi đè?", alert_overwrite_success:"Đã ghi đè \"{name}\"", delete_account_btn:"Xóa tài khoản", confirm_delete_account:"Xóa tài khoản sẽ xóa vĩnh viễn mọi dữ liệu của bạn: tuyến đường, điểm cố định, ảnh, theo dõi, lượt thích và cài đặt. Không thể hoàn tác. Xóa tài khoản?", prompt_delete_account_word:"Để xác nhận, hãy nhập \"{word}\"", alert_account_deleted:"Đã xóa tài khoản", alert_account_delete_fail:"Không thể xóa tài khoản: {err}", delete_account_word:"XÓA",
   reach_arrived:"Đã đến: {name}", reach_next:"Tiếp theo: {name}", reach_goal:"Đích", notif_channel_name:"Thông báo đến nơi khi dẫn đường", bg_nav_message:"Đang dẫn đường: đang dùng vị trí của bạn",
@@ -3353,11 +3372,40 @@ function pathLength(coords){
 function invalidateSeg(i){ if(points[i]) delete points[i].segPath; }
 function invalidateAllSegs(){ points.forEach(p=>delete p.segPath); }
 
+// ===== 道の線が取れなかった区間 =====
+// ・道に沿った線は、区間ごとに道路のサーバーへ問い合わせて取る（取れるまでは薄い点線の直線）
+// ・取れなかった時（電波が弱い・サーバーが混んでいる）は、5秒後・15秒後・1分後に自動でもう一度取りに行く。電波が戻った時も取りに行く
+// ・それでも取れない区間がある時は、地図の上に「道の線が取れていない区間：n ［取り直す］」を出す（押すとすぐ取りに行く）
+let segRetryStep = 0, segRetryTimer = null;
+const SEG_RETRY_WAITS = [5000, 15000, 60000];
+function segNeedsRoad(i){ const m = segModeOf(i); return useRoad && !segIsStraight(m) && m !== 'straight'; }
+function countMissingSegs(){
+  let n = 0;
+  for(let i=0;i<points.length-1;i++){ const a = points[i]; if(segNeedsRoad(i) && !(a.segPath && a.segPath.length>1)) n++; }
+  return n;
+}
+function updateSegWarn(){
+  const el = document.getElementById('seg-warn'); if(!el) return;
+  const n = (points.length >= 2) ? countMissingSegs() : 0;
+  const busy = !!segRetryTimer;
+  el.style.display = (n > 0 && !busy) ? 'flex' : 'none';
+  const tx = document.getElementById('seg-warn-text'); if(tx) tx.textContent = t('seg_warn_text', { n });
+}
+function scheduleSegRetry(){
+  clearTimeout(segRetryTimer); segRetryTimer = null;
+  if(segRetryStep >= SEG_RETRY_WAITS.length || !countMissingSegs()){ updateSegWarn(); return; }
+  segRetryTimer = setTimeout(()=>{ segRetryTimer = null; segRetryStep++; updatePolyline(); }, SEG_RETRY_WAITS[segRetryStep]);
+  updateSegWarn();
+}
+function retrySegsNow(){ segRetryStep = 0; clearTimeout(segRetryTimer); segRetryTimer = null; updatePolyline(); }
+window.addEventListener('online', ()=>{ if(countMissingSegs()) retrySegsNow(); });
+
 async function updatePolyline(){
   clearPolylines();
-  if(points.length<2) return;
+  if(points.length<2){ updateSegWarn(); return; }
   const token = ++polyToken;
   const dists = [];
+  let failed = 0;
   for(let i=0;i<points.length-1;i++){
     const a=points[i], b=points[i+1];
     const mode = segModeOf(i), color = segColorOf(i);
@@ -3385,11 +3433,14 @@ async function updatePolyline(){
       const line = L.polyline(coords, {style:null, color, weight:5, opacity:0.85}).addTo(map);
       polylines.push(line);
       dists[i] = r.distance;
-    }catch(e){ console.warn('経路取得に失敗', e); }
+    }catch(e){ console.warn('経路取得に失敗', e); failed++; }
   }
   if(token!==polyToken) return;
   segmentDistances = dists;
   renderList();
+  // 取れなかった区間があれば、少し待ってもう一度。全部取れたら、もう一度の数え直しを最初に戻す
+  if(failed > 0) scheduleSegRetry();
+  else { segRetryStep = 0; clearTimeout(segRetryTimer); segRetryTimer = null; updateSegWarn(); }
 }
 
 // ===== 再生モード（ルートの線が伸びていく） =====
@@ -4462,6 +4513,7 @@ function toggleNav(){navActive?stopNav():startNav();}
 function startNav(){
   setTimeout(refreshAdVisibility, 0);
   if(!points.length){alert(t('alert_no_points'));return;}
+  if(countMissingSegs()) retrySegsNow();   // 道の線が取れていない区間があれば、先に取りに行く
   navActive=true;navIndex=0;
   requestWakeLock().then(ok=>{
     if(!ok) console.warn('この端末・ブラウザでは画面のスリープを止められません');
@@ -4983,6 +5035,16 @@ async function initAuth(){
 function showAuthScreen(){
   document.getElementById('auth-screen').style.display='flex';
 }
+// ログイン画面の入力（ユーザー名・メールアドレス・パスワード・認証番号・エラー）を全部消し、「ログイン」のタブに戻す
+function clearAuthForm(){
+  ['auth-username','auth-email','auth-password','verify-code'].forEach(id=>{ const el = document.getElementById(id); if(el) el.value = ''; });
+  ['auth-error','verify-error'].forEach(id=>{ const el = document.getElementById(id); if(el){ el.textContent = ''; el.style.display = 'none'; } });
+  try{ clearInterval(verifyTimer); }catch(e){}
+  const v = document.getElementById('auth-verify'); if(v) v.style.display = 'none';
+  const m = document.querySelector('#auth-screen > div'); if(m) m.style.display = '';
+  verifyEmail = ''; verifyResendAt = 0;
+  try{ authTab('login'); }catch(e){}
+}
 
 function closeAuthScreen(){
   document.getElementById('auth-screen').style.display='none';
@@ -5048,6 +5110,10 @@ async function authSubmit(){
       return;
     }
     // 新規登録：メールアドレスの確認が必要（ログインの情報がまだない）→ 認証番号の入力の画面へ
+    if(currentAuthTab==='signup' && !data.access_token && Array.isArray(data.identities) && data.identities.length === 0){
+      errEl.textContent = t('err_email_registered'); errEl.style.display = 'block';
+      return;
+    }
     if(currentAuthTab==='signup' && !data.access_token){
       try{ localStorage.setItem('navi_pending_signup', JSON.stringify({ email, username: document.getElementById('auth-username').value.trim() })); }catch(e){}
       openVerifyScreen(email);
@@ -5093,6 +5159,7 @@ async function finishAuth(data, username, errEl){
       }
     }
     try{ localStorage.removeItem('navi_pending_signup'); }catch(e){}
+    clearAuthForm();   // 入力したメールアドレス・パスワードを画面に残さない
 
     // プロフィールを取得してusernameをcurrentUserに追加
     await loadUserProfile();
@@ -5281,8 +5348,10 @@ function refreshAppFromSettings(){
     if(usingGoogleMap) rebuildGoogleLayer();
   }catch(e){ console.warn(e); }
   // 線の既定の色・種類
+  const segBefore = JSON.stringify([segUserColors, segUserStyles]);
   try{ segUserColors = JSON.parse(ls('navi_seg_colors') || '{}'); }catch(e){ segUserColors = {}; }
   try{ segUserStyles = JSON.parse(ls('navi_seg_styles') || '{}'); }catch(e){ segUserStyles = {}; }
+  const segChanged = JSON.stringify([segUserColors, segUserStyles]) !== segBefore;
   try{ renderSegDefaultColors(); }catch(e){}
   // 写真
   try{ syncPhotoControls(); renderPhotoBadges(true); }catch(e){}
@@ -5297,7 +5366,7 @@ function refreshAppFromSettings(){
   try{ loadGpsIconForUser(); }catch(e){}
   // 地図の向き（許可を聞かずに使える端末だけ。iPhone は毎回ボタンで）
   try{ restoreCompassMode(); }catch(e){}
-  try{ updatePolyline(); renderList(); }catch(e){}
+  try{ if(segChanged) updatePolyline(); renderList(); }catch(e){}   // 線は、色・種類が変わった時だけ描き直す
   // 言語：ルートを作っていない時だけ、すぐ切り替える（作っている時は次に開いた時）
   const lang = ls('navi_lang');
   if(lang && lang !== currentLang && SUPPORTED_LANGS.includes(lang) && !points.length) location.reload();
@@ -5396,6 +5465,7 @@ function authLogout(){
   if(typeof cancelPreview==='function' && previewState) cancelPreview();
   // 設定は updateUserBar → syncSettingsForUser で、端末の設定に戻す
   try{ renderPhotoBadges(true); }catch(e){}
+  try{ clearAuthForm(); }catch(e){}   // ログイン画面の入力を消す
   updateUserBar();
 }
 
