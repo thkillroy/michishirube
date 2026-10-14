@@ -4,7 +4,7 @@
 <meta name="google" content="notranslate">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>MICHI-SHIRUBE</title>
+<title>MICHI-SHIRUBE（G）</title>
 <!-- 共有リンクをSNSやLINEに貼った時の見た目（全リンク共通の画像） -->
 <meta name="description" content="MICHI-SHIRUBE（みちしるべ）：ルートを作って、ナビで走って、動画にして共有できる地図アプリ。">
 <meta property="og:type" content="website">
@@ -21,18 +21,956 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="MICHI-SHIRUBE">
+<meta name="apple-mobile-web-app-title" content="MICHI G">
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <link rel="icon" href="./favicon-32.png" sizes="32x32">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<!-- 地図を回転させる部品（leaflet-rotate）。読み込めなくても地図は北が上のまま普通に動く -->
-<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
+<!-- 地図はGoogleマップ本体。Leaflet と同じ書き方で動かすための代わりの部品 -->
+<script>
+// =====================================================================
+// Leaflet の代わり（Leaflet と同じ書き方のまま、別の地図で動かすための部品）
+// ・アプリ本体のコードは Leaflet の書き方（L.marker / map.setView など）のまま
+// ・地図は2種類
+//   google：Googleマップ本体（ベクター地図）。いつもはこちら
+//   free  ：MapLibre＋OpenFreeMap（無料・回数制限なし・商用OK）。Googleが使えない時の予備
+// ・どちらも、回しても文字がまっすぐ
+// ・Googleが使えない合図が来たら、free に切り替える（一度切り替えたら、そのページを開いている間は free のまま）
+//   ①読み込みが4秒以内に終わらない（アプリ側の判定）②キーの認証エラー（gm_authFailure）
+//   ③地図の所にGoogleのエラー表示が出た・「〜MapError」のエラー（上限超えの OverQuotaMapError など）
+// ・URL に ?map=free を付けると、最初から free で開く（試す用）
+// =====================================================================
+(function(){
+  // ===== マップID（地図の見た目ごと） =====
+  // ・G版の地図の見た目は「Google Cloud で作った地図スタイル」を「マップID」に結び付けて使う
+  // ・見た目（標準 none／モノクロ mono／ダーク dark／ナイト night）× 文字とマーク（1 全部表示／2 地名・道路名・駅名だけ／3 全部消す）＝ 12通り
+  // ・Google Cloud（プロジェクト MICHI-SHIRUBE）で作ったマップID。2026-10-10 登録
+  // ・マップIDは地図を作る時にしか指定できないので、見た目を変えた時は地図を作り直す（地図を開いた回数に1回数えられる）
+  const GM_MAP_IDS = {
+    'none-1': 'b524098d6ad6eb0563c5ffd3',  'none-2': 'b524098d6ad6eb05fbdd4061',  'none-3': 'b524098d6ad6eb05fa74869c',
+    'mono-1': 'b524098d6ad6eb05119efda7',  'mono-2': 'b524098d6ad6eb0511c2772a',  'mono-3': 'b524098d6ad6eb0521f61739',
+    'dark-1': 'b524098d6ad6eb056e1c5eb6',  'dark-2': 'b524098d6ad6eb05c30e110e',  'dark-3': 'b524098d6ad6eb05d6d87d03',
+    'night-1': 'b524098d6ad6eb058e193285',  'night-2': 'b524098d6ad6eb054eb9d52f',  'night-3': 'b524098d6ad6eb05f92c1150'
+  };
+  // 今アプリで選ばれている見た目の名前（アプリの currentMapStyle / mapLabelMode を読む）
+  function styleKey(){
+    let base = 'none', mode = 'all';
+    try{ base = currentMapStyle || 'none'; }catch(e){}
+    try{ mode = mapLabelMode || 'all'; }catch(e){}
+    return `${base}-${({ all: 1, names: 2, none: 3 })[mode] || 1}`;
+  }
+  function mapIdFor(key){ return GM_MAP_IDS[key] || GM_MAP_IDS['none-1'] || 'DEMO_MAP_ID'; }
+  const FREE_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+  const MAPLIBRE_JS  = 'https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js';
+  const MAPLIBRE_CSS = 'https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css';
+  const GM = { mode: 'google', Adv: null, iw: null, iwOpen: false, gLayers: {}, mlReady: false, mlPopup: null, seq: 0 };
+  window.__GM = GM;
+  try{ if(new URLSearchParams(location.search).get('map') === 'free') GM.mode = 'free'; }catch(e){}
+
+  // ----- 緯度経度・点・範囲 -----
+  function LatLng(lat, lng){ this.lat = +lat; this.lng = +lng; }
+  LatLng.prototype.equals = function(o){ o = toLL(o); return !!o && Math.abs(this.lat - o.lat) < 1e-9 && Math.abs(this.lng - o.lng) < 1e-9; };
+  LatLng.prototype.distanceTo = function(o){ return hav(this, toLL(o)); };
+  LatLng.prototype.toString = function(){ return `LatLng(${this.lat}, ${this.lng})`; };
+  function toLL(a){
+    if(!a) return null;
+    if(a instanceof LatLng) return a;
+    if(Array.isArray(a)) return new LatLng(a[0], a[1]);
+    if(typeof a.lat === 'function') return new LatLng(a.lat(), a.lng());
+    if(a.lat !== undefined) return new LatLng(a.lat, a.lng !== undefined ? a.lng : a.lon);
+    return null;
+  }
+  const gll = ll => { ll = toLL(ll); return { lat: ll.lat, lng: ll.lng }; };
+  const mll = ll => { ll = toLL(ll); return [ll.lng, ll.lat]; };
+  function hav(a, b){
+    const R = 6371000, r = Math.PI / 180;
+    const dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
+  }
+  function Point(x, y){ this.x = x; this.y = y; }
+  Point.prototype.add = function(p){ p = toPt(p); return new Point(this.x + p.x, this.y + p.y); };
+  Point.prototype.subtract = function(p){ p = toPt(p); return new Point(this.x - p.x, this.y - p.y); };
+  Point.prototype.round = function(){ return new Point(Math.round(this.x), Math.round(this.y)); };
+  function toPt(a){ return (a instanceof Point) ? a : Array.isArray(a) ? new Point(a[0], a[1]) : new Point(a.x, a.y); }
+  function LatLngBounds(a){
+    this._s = 90; this._n = -90; this._w = 180; this._e = -180; this._ok = false;
+    if(a) (Array.isArray(a) ? a : [a]).forEach(p => this.extend(p));
+  }
+  LatLngBounds.prototype.extend = function(p){
+    if(p instanceof LatLngBounds){ if(p._ok){ this.extend([p._s, p._w]); this.extend([p._n, p._e]); } return this; }
+    const ll = toLL(p); if(!ll) return this;
+    this._s = Math.min(this._s, ll.lat); this._n = Math.max(this._n, ll.lat);
+    this._w = Math.min(this._w, ll.lng); this._e = Math.max(this._e, ll.lng); this._ok = true; return this;
+  };
+  LatLngBounds.prototype.isValid = function(){ return this._ok; };
+  LatLngBounds.prototype.getCenter = function(){ return new LatLng((this._s + this._n) / 2, (this._w + this._e) / 2); };
+  LatLngBounds.prototype.getSouthWest = function(){ return new LatLng(this._s, this._w); };
+  LatLngBounds.prototype.getNorthEast = function(){ return new LatLng(this._n, this._e); };
+
+  // ----- イベントの仕組み（on / off / once / fire） -----
+  class Evented {
+    on(types, fn, ctx){
+      if(typeof types === 'object'){ Object.keys(types).forEach(k => this.on(k, types[k], fn)); return this; }
+      this._ev = this._ev || {};
+      types.split(/\s+/).forEach(t => { (this._ev[t] = this._ev[t] || []).push({ fn, ctx }); this._onListen && this._onListen(t); });
+      return this;
+    }
+    off(types, fn){
+      if(!this._ev) return this;
+      if(!types){ this._ev = {}; return this; }
+      types.split(/\s+/).forEach(t => { if(!fn) delete this._ev[t]; else this._ev[t] = (this._ev[t] || []).filter(h => h.fn !== fn); });
+      return this;
+    }
+    once(type, fn, ctx){ const w = e => { this.off(type, w); fn.call(ctx || this, e); }; return this.on(type, w); }
+    fire(type, data){
+      const hs = (this._ev && this._ev[type]) ? this._ev[type].slice() : [];
+      const e = Object.assign({ type, target: this, sourceTarget: this }, data || {});
+      hs.forEach(h => { try{ h.fn.call(h.ctx || this, e); }catch(err){ console.error(err); } });
+      return this;
+    }
+    listens(type){ return !!(this._ev && this._ev[type] && this._ev[type].length); }
+  }
+
+  // ----- MapLibre（無料の地図）を読み込む -----
+  let mlLoading = null;
+  function loadMapLibre(){
+    if(window.maplibregl) return Promise.resolve(true);
+    if(mlLoading) return mlLoading;
+    if(!document.querySelector(`link[href="${MAPLIBRE_CSS}"]`)){
+      const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = MAPLIBRE_CSS; document.head.appendChild(l);
+    }
+    mlLoading = new Promise(res => {
+      const s = document.createElement('script');
+      s.src = MAPLIBRE_JS;
+      s.onload = () => res(!!window.maplibregl);
+      s.onerror = () => { mlLoading = null; res(false); };
+      document.head.appendChild(s);
+    });
+    return mlLoading;
+  }
+
+  // ----- 地図 -----
+  class GMap extends Evented {
+    constructor(id, o){
+      super();
+      this._div = typeof id === 'string' ? document.getElementById(id) : id;
+      o = o || {};
+      this._c = toLL(o.center) || new LatLng(35.68, 139.75);
+      this._z = o.zoom != null ? o.zoom : 14;
+      this._h = 0;
+      this._layers = new Set();
+      this._g = null;      // Googleマップ本体
+      this._ml = null;     // MapLibre（無料の地図）
+      this._pendingFit = null;
+      this._base = { type: 'roadmap' };
+      // 指・マウスで地図を操作している間は、アプリから地図を動かさない（ピンチの拡大縮小などが上書きされないように）
+      // ・アプリの中心合わせは map.touchZoom._zooming、ボタンでの移動中は map._panAnim._inProgress を見て止まる（Leaflet と同じ名前）
+      this.touchZoom = { _zooming: false };
+      this._panAnim = { _inProgress: false };
+      this._gesture = false;
+      this._watchGestures(this._div.parentNode || this._div);
+      window.__gmMap = this;
+      if(GM.mode === 'free') this._createFree();
+      else if(window._googleMapsReady) window.__gmInit();
+    }
+    // ===== Googleマップ本体を作る =====
+    _create(Map, RenderingType){
+      if(GM.mode !== 'google' || this._g) return;
+      this._mapId = mapIdFor(styleKey());
+      const g = new Map(this._div, {
+        center: gll(this._c), zoom: this._z, heading: this._h, tilt: 0,
+        mapId: this._mapId, renderingType: RenderingType.VECTOR,
+        disableDefaultUI: true, clickableIcons: false, gestureHandling: this._custom ? 'none' : 'greedy', keyboardShortcuts: false,
+        headingInteractionEnabled: false, tiltInteractionEnabled: false,   // 2本指で回したり傾けたりしない（回転はボタンだけ）
+        mapTypeId: this._base.type
+      });
+      this._g = g;
+      this._GMap = Map; this._RT = RenderingType;
+      g.addListener('click', e => {
+        if(GM.iwOpen){ GM.iw.close(); GM.iwOpen = false; this.fire('popupclose'); }   // Leaflet と同じく、地図を押すと吹き出しを閉じる（閉じたことも知らせる）
+        this.fire('click', { latlng: e.latLng ? new LatLng(e.latLng.lat(), e.latLng.lng()) : null, originalEvent: e.domEvent });
+      });
+      g.addListener('dragstart', () => this.fire('dragstart'));
+      g.addListener('dragend', () => this.fire('dragend'));
+      g.addListener('heading_changed', () => this.fire('rotate'));
+      g.addListener('zoom_changed', () => this.fire('zoomend'));
+      g.addListener('idle', () => this.fire('moveend'));
+      Object.keys(GM.gLayers).forEach(n => GM.gLayers[n].setMap(g));
+      this._layers.forEach(l => l._attach && l._attach());
+      if(this._pendingFit){ const [b, o] = this._pendingFit; this._pendingFit = null; this.fitBounds(b, o); }
+      // 合図③：地図の所にGoogleのエラー表示が出たら、無料の地図に切り替える
+      try{
+        const mo = new MutationObserver(() => {
+          if(this._div.querySelector && this._div.querySelector('.gm-err-container, .gm-err-message')){ mo.disconnect(); this._switchToFree('Googleのエラー表示'); }
+        });
+        mo.observe(this._div, { childList: true, subtree: true });
+      }catch(e){}
+      this.fire('load');
+    }
+    // ===== 無料の地図（MapLibre＋OpenFreeMap）を作る =====
+    _createFree(){
+      if(this._ml || this._freeStarting) return;
+      this._freeStarting = true;
+      GM.mode = 'free';
+      const box = document.createElement('div');
+      box.id = 'map-free';
+      box.style.cssText = 'position:absolute;inset:0;';
+      (this._div.parentNode || document.body).appendChild(box);
+      this._div.style.display = 'none';
+      this._div = box;
+      loadMapLibre().then(ok => {
+        if(!ok){ console.error('無料の地図（MapLibre）を読み込めませんでした'); return; }
+        const ml = new maplibregl.Map({
+          container: box, style: FREE_STYLE,
+          center: mll(this._c), zoom: this._z - 1, bearing: this._h,   // MapLibre の倍率は Google より1小さい（512pxの地図画像のため）
+          dragRotate: false, pitchWithRotate: false, touchPitch: false,
+          attributionControl: { compact: true }
+        });
+        ml.touchZoomRotate.disableRotation();   // 2本指で回さない（回転はボタンだけ）
+        if(this._custom){ ml.dragPan.disable(); ml.touchZoomRotate.disable(); }
+        ml.keyboard.disableRotation();
+        this._ml = ml;
+        ml.on('click', e => this.fire('click', { latlng: new LatLng(e.lngLat.lat, e.lngLat.lng), originalEvent: e.originalEvent }));
+        ml.on('dragstart', () => this.fire('dragstart'));
+        ml.on('dragend', () => this.fire('dragend'));
+        ml.on('rotate', () => this.fire('rotate'));
+        ml.on('zoomend', () => this.fire('zoomend'));
+        ml.on('moveend', () => this.fire('moveend'));
+        ml.on('load', () => {
+          GM.mlReady = true;
+          this._layers.forEach(l => l._attach && l._attach());
+          if(this._pendingFit){ const [b, o] = this._pendingFit; this._pendingFit = null; this.fitBounds(b, o); }
+          this.fire('load');
+        });
+        // パネルの開け閉めなどで枠の大きさが変わったら、地図も合わせる
+        try{ new ResizeObserver(() => ml.resize()).observe(box); }catch(e){}
+      });
+    }
+    // Googleが使えない合図が来たら、無料の地図に切り替える
+    _switchToFree(reason){
+      if(GM.mode === 'free') return;
+      console.warn('無料の地図に切り替えます：', reason);
+      this._c = this.getCenter(); this._z = this.getZoom(); this._h = this._heading();
+      this._layers.forEach(l => l._detach && l._detach());
+      if(GM.iw){ try{ GM.iw.close(); }catch(e){} GM.iwOpen = false; }
+      Object.keys(GM.gLayers).forEach(n => { try{ GM.gLayers[n].setMap(null); }catch(e){} });
+      this._g = null;
+      this._createFree();
+    }
+    // ===== 指・マウスの操作 =====
+    // ・北が上の時：Googleマップ（または無料の地図）に任せる。触っている間はアプリから地図を動かさず、離した後に戻す
+    // ・回転モードの時：地図の部品の指の操作を止め、ここで指の動きを読んで地図を動かす
+    //   （地図を回しながら、同じ1コマの中でピンチの拡大縮小・ドラッグも反映できる。タップでも回転は止まらない）
+    _watchGestures(box){
+      this._box = box;
+      const start = () => { clearTimeout(this._gT); this._gesture = true; this.touchZoom._zooming = true; };
+      const endLater = ms => { clearTimeout(this._gT); this._gT = setTimeout(() => this._gestureEnd(), ms); };
+      const opt = { capture: true, passive: true };
+      box.addEventListener('touchstart', e => { if(this._custom) this._tStart(e); else start(); }, opt);
+      box.addEventListener('touchmove', e => { if(this._custom) this._tMove(e); }, { capture: true, passive: false });
+      const tEnd = e => {
+        if(this._custom){ this._tEnd(e); return; }
+        if(!e.touches || e.touches.length === 0) endLater(300);
+      };
+      box.addEventListener('touchend', tEnd, opt);
+      box.addEventListener('touchcancel', tEnd, opt);
+      box.addEventListener('gesturestart', e => { if(this._custom) e.preventDefault(); }, { capture: true, passive: false });   // iPhone の画面ごとの拡大を止める
+      box.addEventListener('mousedown', () => { if(!this._custom) start(); }, true);
+      window.addEventListener('mouseup', () => { if(this._gesture) endLater(300); }, true);
+      box.addEventListener('wheel', () => { if(!this._custom){ start(); endLater(400); } }, opt);
+      setInterval(() => this._syncGestureMode(), 500);
+    }
+    // 回転モードかどうか（アプリの compassMode を読む）に合わせて、指の操作の担当を切り替える
+    _syncGestureMode(){
+      let on = false;
+      try{ on = (compassMode === 'heading'); }catch(e){}
+      if(on === !!this._custom) return;
+      this._custom = on; this._t = null;
+      if(on){ clearTimeout(this._gT); this._gesture = false; this.touchZoom._zooming = false; }
+      if(this._g) this._g.setOptions({ gestureHandling: on ? 'none' : 'greedy' });
+      if(this._ml){
+        if(on){ this._ml.dragPan.disable(); this._ml.touchZoomRotate.disable(); }
+        else { this._ml.dragPan.enable(); this._ml.touchZoomRotate.enable(); this._ml.touchZoomRotate.disableRotation(); }
+      }
+    }
+    _touchPts(e){
+      const r = this._div.getBoundingClientRect();
+      return Array.from(e.touches || []).slice(0, 2).map(t => new Point(t.clientX - r.left, t.clientY - r.top));
+    }
+    _tSnap(pts){
+      const t = { n: pts.length, last: pts[0], z0: this.getZoom(), moved: this._t ? this._t.moved : false };
+      if(pts.length >= 2){
+        t.d0 = Math.max(10, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
+        t.mid = new Point((pts[0].x + pts[1].x) / 2, (pts[0].y + pts[1].y) / 2);
+        t.anchor = this.containerPointToLatLng(t.mid);
+      }
+      this._t = t;
+    }
+    _tStart(e){ const p = this._touchPts(e); if(p.length) this._tSnap(p); }
+    _tMove(e){
+      const t = this._t; if(!t) return;
+      const p = this._touchPts(e); if(!p.length) return;
+      if(p.length !== t.n){ this._tSnap(p); return; }
+      if(p.length === 1){
+        const dx = p[0].x - t.last.x, dy = p[0].y - t.last.y;
+        if(!t.moved && Math.hypot(dx, dy) < 6) return;   // わずかな動きはタップとして扱う
+        if(!t.moved){ t.moved = true; this.fire('dragstart'); }
+        const s = this.getSize();
+        this.setView(this.containerPointToLatLng(new Point(s.x / 2 - dx, s.y / 2 - dy)));
+        t.last = p[0];
+      } else {
+        const d = Math.max(10, Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y));
+        const z = Math.max(3, Math.min(21, t.z0 + Math.log2(d / t.d0)));
+        let follow = false;
+        try{ follow = !!followMode; }catch(err){}
+        if(follow) this.setView(this.getCenter(), z);   // 追いかけ中は現在地を真ん中のまま拡大縮小
+        else {
+          const mid = new Point((p[0].x + p[1].x) / 2, (p[0].y + p[1].y) / 2);
+          this.setView(this._centerFor(t.anchor, mid, z), z);   // 指の間の場所を指の下に保ったまま拡大縮小
+        }
+        t.moved = true;
+      }
+      if(e.cancelable) e.preventDefault();
+    }
+    _tEnd(e){
+      const p = this._touchPts(e);
+      if(p.length){ this._tSnap(p); return; }
+      if(this._t && this._t.moved) this.fire('dragend');
+      this._t = null;
+    }
+    // ある場所（ll）が、倍率 z・今の向きで、画面上の pt に来るための地図の中心
+    _centerFor(ll, pt, z){
+      ll = toLL(ll);
+      const h = this._heading() * Math.PI / 180, sz = this.getSize();
+      const w = this._world(ll, z), sx = pt.x - sz.x / 2, sy = pt.y - sz.y / 2;
+      return this._unworld(w[0] - (sx * Math.cos(h) - sy * Math.sin(h)), w[1] - (sx * Math.sin(h) + sy * Math.cos(h)), z);
+    }
+    // 指を離した後（0.3秒後）：その時の向き・現在地へ、なめらかに戻す（北が上の時だけ使う）
+    _gestureEnd(){
+      this._gesture = false; this.touchZoom._zooming = false;
+      try{ if(typeof headingShown === 'number') headingShown = this._heading(); }catch(e){}
+      try{ if(followMode && gpsMarker) this.panTo(gpsMarker.getLatLng()); }catch(e){}
+      try{ requestMotion(); }catch(e){}
+    }
+    getContainer(){ return this._div; }
+    getSize(){ return new Point(this._div.clientWidth, this._div.clientHeight); }
+    getCenter(){
+      if(this._ml){ const c = this._ml.getCenter(); return new LatLng(c.lat, c.lng); }
+      if(this._g){ const c = this._g.getCenter(); if(c) return new LatLng(c.lat(), c.lng()); }
+      return this._c;
+    }
+    getZoom(){
+      if(this._ml) return this._ml.getZoom() + 1;
+      if(this._g){ const z = this._g.getZoom(); if(z != null) return z; }
+      return this._z;
+    }
+    _heading(){
+      if(this._ml) return ((this._ml.getBearing() % 360) + 360) % 360;
+      if(this._g){ const h = this._g.getHeading(); if(typeof h === 'number') return h; }
+      return this._h;
+    }
+    setView(ll, zoom){
+      ll = toLL(ll); this._c = ll; if(zoom != null) this._z = zoom;
+      if(this._ml) this._ml.jumpTo(zoom != null ? { center: mll(ll), zoom: zoom - 1 } : { center: mll(ll) });
+      else if(this._g) this._g.moveCamera(zoom != null ? { center: gll(ll), zoom } : { center: gll(ll) });
+      return this;
+    }
+    setZoom(z){
+      this._z = z;
+      if(this._ml) this._ml.easeTo({ zoom: z - 1, duration: 200 });
+      else if(this._g) this._g.setZoom(z);
+      return this;
+    }
+    zoomIn(){ return this.setZoom(Math.round(this.getZoom()) + 1); }
+    zoomOut(){ return this.setZoom(Math.round(this.getZoom()) - 1); }
+    panTo(ll, opts){
+      ll = toLL(ll); this._c = ll;
+      const instant = opts && opts.animate === false;
+      if(this._ml){
+        if(instant) this._ml.jumpTo({ center: mll(ll) });
+        else { this._panAnim._inProgress = true; this._ml.once('moveend', () => { this._panAnim._inProgress = false; }); this._ml.easeTo({ center: mll(ll), duration: 250 }); }
+      } else if(this._g){
+        if(instant) this._g.moveCamera({ center: gll(ll) });
+        else { this._panAnim._inProgress = true; google.maps.event.addListenerOnce(this._g, 'idle', () => { this._panAnim._inProgress = false; }); this._g.panTo(gll(ll)); }
+      }
+      return this;
+    }
+    panBy(off, opts){
+      const p = toPt(off), s = this.getSize();
+      return this.panTo(this.containerPointToLatLng(new Point(s.x / 2 + p.x, s.y / 2 + p.y)), opts);
+    }
+    _rawPanBy(p){ return this.panBy(p, { animate: false }); }
+    fitBounds(b, o){
+      o = o || {};
+      const bb = (b instanceof LatLngBounds) ? b : new LatLngBounds(b);
+      if(!bb.isValid()) return this;
+      const tl = o.paddingTopLeft ? toPt(o.paddingTopLeft) : o.padding ? toPt(o.padding) : new Point(0, 0);
+      const br = o.paddingBottomRight ? toPt(o.paddingBottomRight) : o.padding ? toPt(o.padding) : new Point(0, 0);
+      const pad = { top: tl.y, left: tl.x, bottom: br.y, right: br.x };
+      const maxZ = (o.maxZoom != null) ? o.maxZoom : 18;
+      if(this._ml && GM.mlReady){
+        // 範囲が狭すぎて余白が入らない時に止まらないよう、余白は地図の大きさの半分までにする
+        const s = this.getSize();
+        pad.top = Math.min(pad.top, s.y / 3); pad.bottom = Math.min(pad.bottom, s.y / 3);
+        pad.left = Math.min(pad.left, s.x / 3); pad.right = Math.min(pad.right, s.x / 3);
+        this._ml.fitBounds([[bb._w, bb._s], [bb._e, bb._n]], { padding: pad, maxZoom: maxZ - 1, bearing: this._heading(), duration: 300 });
+        return this;
+      }
+      if(this._g){
+        this._g.fitBounds({ south: bb._s, north: bb._n, west: bb._w, east: bb._e }, pad);
+        // Googleの fitBounds は向きを0（北）に戻してから動くので、回転していた時は元の向きに戻す
+        const keepH = this._h;
+        google.maps.event.addListenerOnce(this._g, 'idle', () => {
+          const cam = {};
+          if(this._g.getZoom() > maxZ) cam.zoom = maxZ;
+          if(keepH) cam.heading = keepH;
+          if(cam.zoom !== undefined || cam.heading !== undefined) this._g.moveCamera(cam);
+        });
+        return this;
+      }
+      this._pendingFit = [bb, o]; this._c = bb.getCenter();
+      return this;
+    }
+    // 回転：Leaflet の回転部品と同じ「bearing」（＝ 地図の向きのマイナス）で受け取る。毎コマ呼ばれる
+    setBearing(b){
+      this._h = ((-b % 360) + 360) % 360;
+      this._syncGestureMode();
+      if(this._gesture && !this._custom) return this;   // 北が上の時に指・マウスで操作中は動かさない（離した後に戻す）
+      if(this._ml) this._ml.jumpTo({ bearing: this._h });
+      else if(this._g) this._g.moveCamera({ heading: this._h });
+      return this;
+    }
+    getBearing(){ return (360 - this._heading()) % 360; }
+    // 画面上の位置 ⇔ 緯度経度（メルカトルで計算し、地図の向きの分だけ回す。倍率は Google の数え方）
+    _world(ll, z){
+      const s = 256 * Math.pow(2, z), sin = Math.sin(ll.lat * Math.PI / 180);
+      return [(ll.lng + 180) / 360 * s, (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * s];
+    }
+    _unworld(x, y, z){
+      const s = 256 * Math.pow(2, z), n = Math.PI - 2 * Math.PI * y / s;
+      return new LatLng(180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))), x / s * 360 - 180);
+    }
+    latLngToContainerPoint(ll){
+      ll = toLL(ll);
+      const z = this.getZoom(), h = this._heading() * Math.PI / 180, sz = this.getSize();
+      const c = this._world(this.getCenter(), z), p = this._world(ll, z);
+      const dx = p[0] - c[0], dy = p[1] - c[1];
+      return new Point(sz.x / 2 + dx * Math.cos(h) + dy * Math.sin(h), sz.y / 2 - dx * Math.sin(h) + dy * Math.cos(h));
+    }
+    containerPointToLatLng(pt){
+      pt = toPt(pt);
+      const z = this.getZoom(), h = this._heading() * Math.PI / 180, sz = this.getSize();
+      const sx = pt.x - sz.x / 2, sy = pt.y - sz.y / 2;
+      const c = this._world(this.getCenter(), z);
+      return this._unworld(c[0] + sx * Math.cos(h) - sy * Math.sin(h), c[1] + sx * Math.sin(h) + sy * Math.cos(h), z);
+    }
+    distance(a, b){ return hav(toLL(a), toLL(b)); }
+    addLayer(l){ l.addTo(this); return this; }
+    removeLayer(l){ if(l) l.remove(); return this; }
+    hasLayer(l){ return !!l && l._map === this; }
+    closePopup(){
+      if(GM.iw){ GM.iw.close(); GM.iwOpen = false; }
+      if(GM.mlPopup) GM.mlPopup.remove();
+      return this;
+    }
+    invalidateSize(){ if(this._ml) this._ml.resize(); this.fire('resize'); return this; }
+    _openPopup(content, ll, anchor, opts){
+      const el = document.createElement('div');
+      if(typeof content === 'string') el.innerHTML = content; else if(content) el.appendChild(content);
+      const maxW = (opts && opts.maxWidth) || 300;
+      if(this._ml){
+        if(!GM.mlPopup){
+          GM.mlPopup = new maplibregl.Popup({ closeButton: true, closeOnClick: true });
+          GM.mlPopup.on('close', () => this.fire('popupclose'));   // 地図を押して閉じた時も知らせる
+        }
+        const off = (anchor && anchor._icon && anchor._icon.options.iconSize) ? Math.round(anchor._icon.options.iconSize[1] * 0.8) : 0;
+        GM.mlPopup.setOffset([0, -off]).setMaxWidth(maxW + 'px').setLngLat(mll(anchor ? anchor._ll : ll)).setDOMContent(el).addTo(this._ml);
+        return;
+      }
+      if(!this._g || !GM.iw) return;
+      GM.iw.setOptions({ maxWidth: maxW, disableAutoPan: true });
+      try{
+        const at = anchor ? anchor._ll : toLL(ll), pt = this.latLngToContainerPoint(at), sz = this.getSize();
+        if(pt.x < 40 || pt.x > sz.x - 40 || pt.y < 160 || pt.y > sz.y - 20) this.panTo(at);
+      }catch(e){}
+      GM.iw.setContent(el);
+      if(anchor && anchor._gm) GM.iw.open({ map: this._g, anchor: anchor._gm });
+      else { GM.iw.setPosition(gll(ll)); GM.iw.open({ map: this._g }); }
+      GM.iwOpen = true;
+    }
+    // 地図の種類と見た目（GoogleMutant の代わり）。無料の地図には種類・見た目の切り替えがないので何もしない
+    _applyBase(o){
+      this._base = { type: (o && o.type) || 'roadmap' };
+      if(!this._g) return;   // まだ地図がない時は、作る時にこの設定で作る
+      if(mapIdFor(styleKey()) !== this._mapId) this._recreateGoogle();   // 見た目が変わった → そのマップIDで作り直す
+      else this._g.setMapTypeId(this._base.type);
+    }
+    // 見た目を変えた時に、Googleマップを作り直す（位置・倍率・向き・ピン・線はそのまま）
+    _recreateGoogle(){
+      if(!this._g || GM.mode !== 'google') return;
+      this._c = this.getCenter(); this._z = this.getZoom(); this._h = this._heading();
+      this._layers.forEach(l => l._detach && l._detach());
+      if(GM.iw){ try{ GM.iw.close(); }catch(e){} GM.iwOpen = false; }
+      try{ google.maps.event.clearInstanceListeners(this._g); }catch(e){}
+      Object.keys(GM.gLayers).forEach(n => { try{ GM.gLayers[n].setMap(null); }catch(e){} });
+      this._g = null;
+      this._div.innerHTML = '';
+      this._create(this._GMap, this._RT);
+    }
+  }
+
+  // ----- 地図の上に置くもの（共通） -----
+  class Layer extends Evented {
+    addTo(m){
+      if(m instanceof LayerGroup){ m.addLayer(this); return this; }
+      if(this._map === m) return this;
+      if(this._map) this._offMap();
+      this._map = m; m._layers.add(this);
+      this._attach();
+      return this;
+    }
+    remove(){ this._offMap(); if(this._group){ this._group._items.delete(this); this._group = null; } return this; }
+    _offMap(){ if(this._map){ this._map._layers.delete(this); this._detach(); this._map = null; } }
+    _gReady(){ return !!(this._map && this._map._g && GM.mode === 'google'); }
+    _mlReady(){ return !!(this._map && this._map._ml && GM.mlReady && GM.mode === 'free'); }
+    _attach(){} _detach(){}
+  }
+
+  // ----- アイコン（divIcon） -----
+  function DivIcon(o){ this.options = Object.assign({ iconSize: [12, 12], className: 'leaflet-div-icon' }, o || {}); }
+
+  // ----- マーカー -----
+  class Marker extends Layer {
+    constructor(ll, o){
+      super();
+      o = o || {};
+      this.options = o;
+      this._ll = toLL(ll);
+      this._icon = o.icon || new DivIcon({ html: '<div style="width:14px;height:14px;border-radius:50%;background:#2ea8ff;border:2px solid #fff"></div>', iconSize: [14, 14], iconAnchor: [7, 7], className: '' });
+      this._drag = !!o.draggable;
+      this._op = o.opacity != null ? o.opacity : 1;
+      this._zi = o.zIndexOffset || 0;
+      this._interactive = o.interactive !== false;
+      this.dragging = { enable: () => this._setDrag(true), disable: () => this._setDrag(false), enabled: () => this._drag };
+    }
+    // アイコンの中身。どちらの地図も「アイコンの下の真ん中」を位置に合わせるので、iconAnchor の分だけずらす
+    _content(){
+      const ic = this._icon.options;
+      const [w, h] = ic.iconSize || [12, 12];
+      const [ax, ay] = ic.iconAnchor || [w / 2, h / 2];
+      const wrap = document.createElement('div');
+      wrap.className = 'gm-lmk';
+      wrap.style.cssText = `position:relative;width:${w}px;height:${h}px;transform:translate(${w / 2 - ax}px,${h - ay}px);opacity:${this._op};`;
+      if(!this._interactive) wrap.style.pointerEvents = 'none';
+      else {
+        // ドラッグできる状態のピンでは、Google の「押した」合図（gmp-click）も普通の click も来ないことがあるので、
+        // 「指（マウス）を置いて、ほとんど動かさずに離した」ことを、ピンの絵そのもので受け取る（二重にはしない）
+        let down = null;
+        wrap.addEventListener('pointerdown', ev => { down = { x: ev.clientX, y: ev.clientY, t: Date.now() }; });
+        wrap.addEventListener('pointerup', ev => {
+          const d = down; down = null;
+          if(!d || !this._clickable()) return;
+          if(Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > 8 || Date.now() - d.t > 600) return;
+          ev.stopPropagation();
+          this._fireTap(ev);
+        });
+        wrap.addEventListener('click', ev => { if(this._clickable()){ ev.stopPropagation(); this._fireTap(ev); } });
+      }
+      const inner = document.createElement('div');
+      if(ic.className) inner.className = ic.className;
+      inner.style.cssText = `width:${w}px;height:${h}px;`;
+      inner.innerHTML = ic.html || '';
+      wrap.appendChild(inner);
+      if(this._tt){
+        const tt = document.createElement('div'); tt.className = 'gm-ltt'; tt.innerHTML = this._tt;
+        wrap.appendChild(tt); this._ttEl = tt;
+      }
+      this._el = wrap;
+      return wrap;
+    }
+    _clickable(){ return this._interactive && (this.listens('click') || !!this._popup); }
+    _fireTap(de){
+      const now = Date.now();
+      if(now - (this._tapAt || 0) < 400 || now - (this._dragEndAt || 0) < 300) return;   // 二重・ドラッグ直後は無視
+      this._tapAt = now; this._onClick(de);
+    }
+    _onClick(de){
+      this.fire('click', { latlng: this._ll, originalEvent: de });
+      if(this._popup && this._map) this._map._openPopup(this._popup, this._ll, this, {});
+    }
+    _attach(){
+      if(this._gm || this._mk || !this._map) return;
+      if(this._gReady() && GM.Adv){
+        this._gm = new GM.Adv({
+          map: this._map._g, position: gll(this._ll), content: this._content(),
+          zIndex: 1000 + this._zi, gmpDraggable: this._drag, gmpClickable: this._clickable()
+        });
+        this._gm.addEventListener('gmp-click', ev => this._fireTap(ev && (ev.domEvent || ev)));
+        this._gm.addListener('dragstart', () => { this._dragging = true; this.fire('dragstart'); });
+        this._gm.addListener('drag', e => { if(e && e.latLng) this._ll = new LatLng(e.latLng.lat(), e.latLng.lng()); this.fire('drag'); });
+        this._gm.addListener('dragend', e => {
+          const p = (e && e.latLng) ? e.latLng : this._gm.position;
+          if(p) this._ll = toLL(p);
+          this._dragging = false; this._dragEndAt = Date.now();
+          this.fire('dragend');
+        });
+        return;
+      }
+      if(this._mlReady()){
+        // MapLibre はマーカーの外側の要素の位置（transform）を自分で書き換えるので、外側を1枚かぶせる
+        const outer = document.createElement('div');
+        outer.style.zIndex = String(1000 + this._zi);
+        outer.appendChild(this._content());
+        this._outer = outer;
+        outer.addEventListener('click', ev => {
+          if(!this._clickable()) return;            // 押しても何もしないマーカーは、地図を押したことにする
+          ev.stopPropagation();
+          this._fireTap(ev);
+        });
+        this._mk = new maplibregl.Marker({ element: outer, anchor: 'bottom', draggable: this._drag })
+          .setLngLat(mll(this._ll)).addTo(this._map._ml);
+        this._mk.on('dragstart', () => this.fire('dragstart'));
+        this._mk.on('drag', () => { const p = this._mk.getLngLat(); this._ll = new LatLng(p.lat, p.lng); this.fire('drag'); });
+        this._mk.on('dragend', () => { const p = this._mk.getLngLat(); this._ll = new LatLng(p.lat, p.lng); this.fire('dragend'); });
+      }
+    }
+    _detach(){
+      if(this._gm){ this._gm.map = null; this._gm = null; }
+      if(this._mk){ this._mk.remove(); this._mk = null; this._outer = null; }
+    }
+    _onListen(t){ if(t === 'click' && this._gm) this._gm.gmpClickable = this._clickable(); }
+    _setDrag(on){ this._drag = on; if(this._gm) this._gm.gmpDraggable = on; if(this._mk) this._mk.setDraggable(on); }
+    getLatLng(){ return this._ll; }
+    setLatLng(ll){
+      this._ll = toLL(ll);
+      if(this._gm) this._gm.position = gll(this._ll);
+      if(this._mk) this._mk.setLngLat(mll(this._ll));
+      this.fire('move', { latlng: this._ll });
+      return this;
+    }
+    _refreshContent(){
+      if(this._gm) this._gm.content = this._content();
+      if(this._outer){ this._outer.innerHTML = ''; this._outer.appendChild(this._content()); }
+    }
+    setIcon(icon){ this._icon = icon; this._refreshContent(); return this; }
+    setOpacity(o){ this._op = o; if(this._el) this._el.style.opacity = o; return this; }
+    setZIndexOffset(z){ this._zi = z; if(this._gm) this._gm.zIndex = 1000 + z; if(this._outer) this._outer.style.zIndex = String(1000 + z); return this; }
+    getElement(){ return this._el || null; }
+    bindPopup(html){ this._popup = html; if(this._gm) this._gm.gmpClickable = this._clickable(); return this; }
+    openPopup(){ if(this._map) this._map._openPopup(this._popup, this._ll, this, {}); return this; }
+    // ツールチップ：PCではマウスを乗せた時に名前を出す
+    bindTooltip(html){ this._tt = html; this._refreshContent(); return this; }
+    setTooltipContent(html){ this._tt = html; if(this._ttEl) this._ttEl.innerHTML = html; return this; }
+    openTooltip(){
+      if(this._el){ this._el.classList.add('tt-open'); clearTimeout(this._ttT); this._ttT = setTimeout(() => this._el && this._el.classList.remove('tt-open'), 3000); }
+      return this;
+    }
+  }
+
+  // 画面上の大きさが一定の円（現在地の青い点など）
+  function circleMarker(ll, o){
+    o = o || {};
+    const r = o.radius || 10, w = (o.weight != null) ? o.weight : 3;
+    const html = `<div style="width:${r * 2}px;height:${r * 2}px;border-radius:50%;box-sizing:border-box;background:${o.fillColor || o.color || '#3388ff'};border:${w}px solid ${o.color || '#3388ff'};opacity:${o.fillOpacity != null ? Math.max(o.fillOpacity, 0.3) : 1};box-shadow:0 0 4px rgba(0,0,0,0.4);"></div>`;
+    return new Marker(ll, { icon: new DivIcon({ html, iconSize: [r * 2, r * 2], iconAnchor: [r, r], className: '' }), interactive: o.interactive === true, zIndexOffset: 900 });
+  }
+
+  // ----- 無料の地図の線・面（GeoJSON の層）を扱う共通の部品 -----
+  function mlAddLayers(ml, id, data, layers){
+    ml.addSource(id, { type: 'geojson', data });
+    layers.forEach(l => ml.addLayer(Object.assign({ source: id }, l)));
+  }
+  function mlRemove(ml, id, layerIds){
+    try{ layerIds.forEach(l => { if(ml.getLayer(l)) ml.removeLayer(l); }); if(ml.getSource(id)) ml.removeSource(id); }catch(e){}
+  }
+  function circlePolygon(ll, r){
+    const pts = [], R = 6378137;
+    for(let i = 0; i <= 64; i++){
+      const t = i / 64 * 2 * Math.PI;
+      const dLat = (r * Math.cos(t)) / R * 180 / Math.PI;
+      const dLng = (r * Math.sin(t)) / (R * Math.cos(ll.lat * Math.PI / 180)) * 180 / Math.PI;
+      pts.push([ll.lng + dLng, ll.lat + dLat]);
+    }
+    return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [pts] } };
+  }
+
+  // ----- メートルで大きさが決まる円（GPSの精度） -----
+  class Circle extends Layer {
+    constructor(ll, o){ super(); this._ll = toLL(ll); this.options = Object.assign({}, o || {}); }
+    _attach(){
+      if(this._gc || this._mlId || !this._map) return;
+      const o = this.options;
+      if(this._gReady()){
+        this._gc = new google.maps.Circle({
+          map: this._map._g, center: gll(this._ll), radius: o.radius || 10, clickable: false,
+          strokeColor: o.color || '#3388ff', strokeWeight: o.weight != null ? o.weight : 1, strokeOpacity: o.opacity != null ? o.opacity : 0.8,
+          fillColor: o.fillColor || o.color || '#3388ff', fillOpacity: o.fillOpacity != null ? o.fillOpacity : 0.2
+        });
+        return;
+      }
+      if(this._mlReady()){
+        this._mlId = 'msc-' + (++GM.seq);
+        mlAddLayers(this._map._ml, this._mlId, circlePolygon(this._ll, o.radius || 10), [
+          { id: this._mlId + '-f', type: 'fill', paint: { 'fill-color': o.fillColor || o.color || '#3388ff', 'fill-opacity': o.fillOpacity != null ? o.fillOpacity : 0.2 } },
+          { id: this._mlId + '-l', type: 'line', paint: { 'line-color': o.color || '#3388ff', 'line-width': o.weight != null ? o.weight : 1, 'line-opacity': o.opacity != null ? o.opacity : 0.8 } }
+        ]);
+      }
+    }
+    _detach(){
+      if(this._gc){ this._gc.setMap(null); this._gc = null; }
+      if(this._mlId){ if(this._map && this._map._ml) mlRemove(this._map._ml, this._mlId, [this._mlId + '-f', this._mlId + '-l']); this._mlId = null; }
+    }
+    _mlUpdate(){ if(this._mlId && this._map && this._map._ml){ const s = this._map._ml.getSource(this._mlId); if(s) s.setData(circlePolygon(this._ll, this.options.radius || 10)); } }
+    setRadius(r){ this.options.radius = r; if(this._gc) this._gc.setRadius(r); this._mlUpdate(); return this; }
+    setLatLng(ll){ this._ll = toLL(ll); if(this._gc) this._gc.setCenter(gll(this._ll)); this._mlUpdate(); return this; }
+    getLatLng(){ return this._ll; }
+  }
+
+  // ----- 線 -----
+  function flatLL(a){ const out = []; (a || []).forEach(p => { if(Array.isArray(p) && Array.isArray(p[0])) flatLL(p).forEach(q => out.push(q)); else { const ll = toLL(p); if(ll) out.push(ll); } }); return out; }
+  function parseDash(d){ return d ? String(d).split(/[ ,]+/).map(Number).filter(n => n > 0) : null; }
+  class Polyline extends Layer {
+    constructor(lls, o){ super(); this._lls = flatLL(lls); this.options = Object.assign({ color: '#3388ff', weight: 3, opacity: 1 }, o || {}); }
+    _gopts(){
+      const o = this.options, dash = parseDash(o.dashArray);
+      const base = { path: this._lls.map(gll), strokeColor: o.color, strokeWeight: o.weight, clickable: this.listens('click'), zIndex: o.zIndex || 1 };
+      if(dash && dash.length){
+        // 点線：Googleの線は点線の指定がないので、短い線の記号を等間隔に並べる
+        const a = dash[0], b = dash[1] != null ? dash[1] : dash[0];
+        return Object.assign(base, { strokeOpacity: 0, icons: [{ icon: { path: `M 0,0 0,${a / Math.max(o.weight, 1)}`, strokeOpacity: o.opacity, strokeColor: o.color, scale: o.weight }, offset: '0', repeat: (a + b) + 'px' }] });
+      }
+      return Object.assign(base, { strokeOpacity: o.opacity, icons: [] });
+    }
+    _geo(){ return { type: 'Feature', geometry: { type: 'LineString', coordinates: this._lls.map(mll) } }; }
+    _mlPaint(){
+      const o = this.options, dash = parseDash(o.dashArray), w = Math.max(o.weight, 1);
+      const p = { 'line-color': o.color, 'line-width': o.weight, 'line-opacity': o.opacity };
+      if(dash && dash.length) p['line-dasharray'] = [dash[0] / w, (dash[1] != null ? dash[1] : dash[0]) / w];   // MapLibre の点線は線の太さが単位
+      return p;
+    }
+    _attach(){
+      if(this._gp || this._mlId || !this._map) return;
+      if(this._gReady()){
+        this._gp = new google.maps.Polyline(Object.assign(this._gopts(), { map: this._map._g }));
+        this._gp.addListener('click', e => this.fire('click', { latlng: e.latLng ? new LatLng(e.latLng.lat(), e.latLng.lng()) : null, originalEvent: e.domEvent }));
+        return;
+      }
+      if(this._mlReady()){
+        const ml = this._map._ml, dashed = !!parseDash(this.options.dashArray);
+        this._mlId = 'msl-' + (++GM.seq);
+        mlAddLayers(ml, this._mlId, this._geo(), [
+          { id: this._mlId, type: 'line', layout: { 'line-join': 'round', 'line-cap': dashed ? 'butt' : 'round' }, paint: this._mlPaint() }
+        ]);
+        this._mlClick = e => this.fire('click', { latlng: new LatLng(e.lngLat.lat, e.lngLat.lng), originalEvent: e.originalEvent });
+        ml.on('click', this._mlId, this._mlClick);
+      }
+    }
+    _detach(){
+      if(this._gp){ this._gp.setMap(null); this._gp = null; }
+      if(this._mlId){
+        const ml = this._map && this._map._ml;
+        if(ml){ try{ ml.off('click', this._mlId, this._mlClick); }catch(e){} mlRemove(ml, this._mlId, [this._mlId]); }
+        this._mlId = null;
+      }
+    }
+    _onListen(t){ if(t === 'click' && this._gp) this._gp.setOptions({ clickable: true }); }
+    _mlSet(){ if(this._mlId && this._map && this._map._ml){ const s = this._map._ml.getSource(this._mlId); if(s) s.setData(this._geo()); } }
+    setLatLngs(lls){ this._lls = flatLL(lls); if(this._gp) this._gp.setPath(this._lls.map(gll)); this._mlSet(); return this; }
+    getLatLngs(){ return this._lls.slice(); }
+    addLatLng(ll){
+      this._lls.push(toLL(ll));
+      if(this._gp){ const q = this._lls[this._lls.length - 1]; this._gp.getPath().push(new google.maps.LatLng(q.lat, q.lng)); }
+      this._mlSet();
+      return this;
+    }
+    setStyle(o){
+      Object.assign(this.options, o || {});
+      if(this._gp) this._gp.setOptions(this._gopts());
+      if(this._mlId && this._map && this._map._ml){
+        const ml = this._map._ml, p = this._mlPaint();
+        Object.keys(p).forEach(k => { try{ ml.setPaintProperty(this._mlId, k, p[k]); }catch(e){} });
+        if(!p['line-dasharray']){ try{ ml.setPaintProperty(this._mlId, 'line-dasharray', null); }catch(e){} }
+      }
+      return this;
+    }
+    getBounds(){ return new LatLngBounds(this._lls); }
+    bringToFront(){
+      this.options.zIndex = 10;
+      if(this._gp) this._gp.setOptions({ zIndex: 10 });
+      if(this._mlId && this._map && this._map._ml){ try{ this._map._ml.moveLayer(this._mlId); }catch(e){} }
+      return this;
+    }
+    bringToBack(){ this.options.zIndex = 0; if(this._gp) this._gp.setOptions({ zIndex: 0 }); return this; }
+  }
+
+  // ----- まとめ役（layerGroup） -----
+  class LayerGroup extends Layer {
+    constructor(items){ super(); this._items = new Set(); (items || []).forEach(l => this.addLayer(l)); }
+    addLayer(l){ this._items.add(l); l._group = this; if(this._map) l.addTo(this._map); return this; }
+    removeLayer(l){ if(this._items.has(l)){ this._items.delete(l); l._group = null; l._offMap(); } return this; }
+    hasLayer(l){ return this._items.has(l); }
+    clearLayers(){ this._items.forEach(l => { l._group = null; l._offMap(); }); this._items.clear(); return this; }
+    eachLayer(fn, ctx){ this._items.forEach(l => fn.call(ctx, l)); return this; }
+    getLayers(){ return Array.from(this._items); }
+    addTo(m){
+      if(m instanceof LayerGroup){ m.addLayer(this); return this; }   // まとまりの中にまとまりを入れる場合
+      if(this._map === m) return this;
+      this._map = m; m._layers.add(this); this._items.forEach(l => l.addTo(m)); return this;
+    }
+    _offMap(){ if(this._map){ this._map._layers.delete(this); this._items.forEach(l => l._offMap()); this._map = null; } }
+  }
+  // GeoJSON の線（LineString / MultiLineString）だけを扱う
+  function geoJSON(geom, o){
+    const st = (o && o.style) || {}, g = new LayerGroup();
+    const add = coords => g.addLayer(new Polyline(coords.map(c => [c[1], c[0]]), st));
+    const walk = x => {
+      if(!x) return;
+      if(x.type === 'FeatureCollection') x.features.forEach(f => walk(f.geometry));
+      else if(x.type === 'Feature') walk(x.geometry);
+      else if(x.type === 'LineString') add(x.coordinates);
+      else if(x.type === 'MultiLineString') x.coordinates.forEach(add);
+    };
+    walk(geom);
+    return g;
+  }
+
+  // ----- 吹き出し（popup） -----
+  class Popup {
+    constructor(o){ this.options = o || {}; }
+    setLatLng(ll){ this._ll = toLL(ll); return this; }
+    setContent(c){ this._c = c; return this; }
+    openOn(m){ m._openPopup(this._c, this._ll, null, this.options); return this; }
+  }
+
+  // ----- 画面の部品（ズーム・方位ボタンなど）を置く場所：Leaflet と同じ右上の枠 -----
+  function corner(pos){
+    const wrap = document.getElementById('map-wrap') || document.body;
+    const [v, h] = pos === 'topleft' ? ['top', 'left'] : pos === 'bottomleft' ? ['bottom', 'left'] : pos === 'bottomright' ? ['bottom', 'right'] : ['top', 'right'];
+    let el = wrap.querySelector(`:scope > .leaflet-${v}.leaflet-${h}`);
+    if(!el){ el = document.createElement('div'); el.className = `leaflet-${v} leaflet-${h}`; wrap.appendChild(el); }
+    return el;
+  }
+  const Control = {
+    extend(props){
+      function C(o){ this.options = Object.assign({ position: 'topright' }, props.options || {}, o || {}); }
+      Object.assign(C.prototype, props);
+      C.prototype.addTo = function(m){
+        const el = this.onAdd(m);
+        el.classList.add('leaflet-control');
+        corner(this.options.position).appendChild(el);
+        this._el = el;
+        return this;
+      };
+      C.prototype.remove = function(){ if(this._el) this._el.remove(); return this; };
+      return C;
+    }
+  };
+  const DomEvent = {
+    on(el, types, fn){ types.split(/\s+/).forEach(t => el.addEventListener(t, fn)); return this; },
+    off(el, types, fn){ types.split(/\s+/).forEach(t => el.removeEventListener(t, fn)); return this; },
+    stopPropagation(e){
+      if(!e) return this;
+      if(e.originalEvent && e.originalEvent.stopPropagation) e.originalEvent.stopPropagation();
+      else if(e.stopPropagation) e.stopPropagation();
+      return this;
+    },
+    preventDefault(e){ if(e && e.preventDefault) e.preventDefault(); return this; },
+    disableClickPropagation(el){ ['click', 'dblclick', 'mousedown', 'touchstart', 'pointerdown'].forEach(t => el.addEventListener(t, ev => ev.stopPropagation())); return this; },
+    disableScrollPropagation(el){ el.addEventListener('wheel', ev => ev.stopPropagation()); return this; }
+  };
+  const DomUtil = {
+    create(tag, cls, parent){ const el = document.createElement(tag); if(cls) el.className = cls; if(parent) parent.appendChild(el); return el; }
+  };
+
+  // ----- 土台の地図（GoogleMutant の代わり） -----
+  function googleBase(o){
+    return {
+      addTo(m){ m._applyBase(o); this._map = m; return this; },
+      remove(){ return this; },
+      addGoogleLayer(name){
+        if(GM.mode !== 'google' || !window.google || !google.maps || !google.maps[name]) return;
+        if(!GM.gLayers[name]) GM.gLayers[name] = new google.maps[name]();
+        GM.gLayers[name].setMap(window.__gmMap && window.__gmMap._g ? window.__gmMap._g : null);
+      },
+      removeGoogleLayer(name){ if(GM.gLayers[name]){ GM.gLayers[name].setMap(null); delete GM.gLayers[name]; } }
+    };
+  }
+
+  // ----- Googleマップの読み込みが終わったら、本物の地図を作る -----
+  window.__gmInit = async function(){
+    const m = window.__gmMap;
+    if(!m || m._g || GM._initing || GM.mode !== 'google') return;
+    GM._initing = true;
+    try{
+      const { Map, RenderingType, InfoWindow } = await google.maps.importLibrary('maps');
+      const { AdvancedMarkerElement } = await google.maps.importLibrary('marker');
+      if(GM.mode !== 'google') return;   // 待っている間に無料の地図に切り替わっていたら作らない
+      GM.Adv = AdvancedMarkerElement;
+      GM.iw = new InfoWindow();
+      GM.iw.addListener('closeclick', () => { GM.iwOpen = false; });
+      m._create(Map, RenderingType);
+    }catch(e){
+      console.warn('Googleマップを作れませんでした', e);
+      GM._initing = false;
+      m._switchToFree('Googleマップを作れない');
+    }
+  };
+  // 合図②：キーの認証エラー（Google 公式の仕組み）
+  window.gm_authFailure = function(){ if(window.__gmMap) window.__gmMap._switchToFree('キーの認証エラー'); };
+  // 合図③：Googleが出す「〜MapError」のエラー（上限超えの OverQuotaMapError など）
+  (function(){
+    const orig = console.error.bind(console);
+    console.error = function(...a){
+      try{
+        const s = a.map(x => (x && x.message) ? x.message : String(x)).join(' ');
+        if(/[A-Za-z]+MapError/.test(s) && window.__gmMap) setTimeout(() => window.__gmMap._switchToFree(s.slice(0, 120)), 0);
+      }catch(e){}
+      return orig(...a);
+    };
+  })();
+
+  window.L = {
+    map: (id, o) => new GMap(id, o),
+    marker: (ll, o) => new Marker(ll, o),
+    circleMarker, circle: (ll, o) => new Circle(ll, o),
+    polyline: (lls, o) => new Polyline(lls, o),
+    layerGroup: items => new LayerGroup(items),
+    geoJSON, popup: o => new Popup(o),
+    divIcon: o => new DivIcon(o),
+    latLng: (a, b) => (b !== undefined ? new LatLng(a, b) : toLL(a)),
+    latLngBounds: a => new LatLngBounds(a),
+    point: (x, y) => (y !== undefined ? new Point(x, y) : toPt(x)),
+    Control, DomEvent, DomUtil,
+    control: {
+      zoom(o){
+        const Z = Control.extend({
+          options: { position: (o && o.position) || 'topleft' },
+          onAdd(m){
+            const bar = DomUtil.create('div', 'leaflet-control-zoom leaflet-bar');
+            const mk = (cls, txt, fn) => { const a = DomUtil.create('a', cls, bar); a.href = '#'; a.role = 'button'; a.innerHTML = txt; a.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); fn(); }); };
+            mk('leaflet-control-zoom-in', '+', () => m.zoomIn());
+            mk('leaflet-control-zoom-out', '&#x2212;', () => m.zoomOut());
+            DomEvent.disableClickPropagation(bar);
+            return bar;
+          }
+        });
+        return new Z(o);
+      }
+    },
+    gridLayer: { googleMutant: o => googleBase(o) },
+    // 合図①：アプリは「Googleが4秒以内に使えない」時に予備の地図（MapTiler）を置こうとする → 無料の地図に切り替える
+    tileLayer: () => ({ addTo(m){ if(m && m._switchToFree) m._switchToFree('Googleの読み込みが4秒以内に終わらない'); return this; }, remove(){ return this; } })
+  };
+})();
+
+</script>
+
 <script>
 // Google Mapsの読み込み完了を検知（async読み込みなので、コールバック関数は先に定義しておく必要がある）
 window._googleMapsReady = false;
 function onGoogleMapsLoaded(){
   window._googleMapsReady = true;
+  if(window.__gmInit) window.__gmInit();   // 本物の地図を作る（代わりの部品）
   if(window._onGoogleMapsReadyCallback) window._onGoogleMapsReadyCallback();
 }
 // 初期言語を先に判定（Google Mapsのタイル言語はscriptタグのlanguageパラメータで一度だけ決まるため）
@@ -52,19 +990,36 @@ function _detectInitialLangEarly(){
 window._initialLang = _detectInitialLangEarly();
 (function(){
   const s = document.createElement('script');
-  s.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyAwuYMBSE85I1VMnG34H-E8JzY114YRSYE&libraries=places&loading=async&language=' + (window._PLACES_LANG[window._initialLang] || 'en') + '&callback=onGoogleMapsLoaded';
+  s.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyAwuYMBSE85I1VMnG34H-E8JzY114YRSYE&libraries=places,marker&v=weekly&loading=async&language=' + (window._PLACES_LANG[window._initialLang] || 'en') + '&callback=onGoogleMapsLoaded';
   s.async = true; s.defer = true;
   document.head.appendChild(s);
 })();
 </script>
-<script src="https://unpkg.com/leaflet.gridlayer.googlemutant@latest/dist/Leaflet.GoogleMutant.js"></script>
+
 <style>
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html, body { height:100%; }
 body { background:#08090d; color:#e9e9ee; font-family:'Helvetica Neue',Arial,sans-serif; position:fixed; inset:0; overflow:hidden; }
 
 #map-wrap { position:fixed; inset:0; top:var(--ad-shift,0px); z-index:0; }
-#map { width:100%; height:100%; }
+/* Googleマップは地図の枠に position:relative を直接書き込むので、外側の枠（gmap-box）で範囲を決める */
+#gmap-box { position:absolute; top:0; left:0; right:calc(var(--panel-w,0px) + var(--edge-w,0px)); bottom:calc(var(--panel-h,0px) + var(--edge-h,0px)); }
+#map { width:100%; height:100%; background:#e5e3df; }
+/* 地図の下に出る Google のロゴ・出典の分だけ、下のボタン類を上げる */
+:root { --gm-attr-h:24px; }
+/* 吹き出し（Googleの InfoWindow）を今までの見た目に合わせる */
+.gm-style .gm-style-iw-c { background:#12141a !important; color:#eee; border:1px solid #ff9f1c; border-radius:10px !important; padding:0 !important; }
+.gm-style .gm-style-iw-d { overflow:auto !important; padding:2px 12px 10px !important; font-size:13px; color:#eee; }
+.gm-style .gm-style-iw-chr { height:26px; }
+.gm-style .gm-style-iw-tc::after { background:#12141a !important; }
+.gm-style .gm-ui-hover-effect span { background-color:#9a9aa6 !important; }
+/* マーカーの名前（PCでマウスを乗せた時） */
+.gm-ltt { display:none; position:absolute; left:50%; bottom:100%; transform:translate(-50%,-4px); background:#12141a; color:#eee; border:1px solid #343b48; border-radius:6px; padding:2px 7px; font-size:11px; white-space:nowrap; pointer-events:none; z-index:2; }
+.gm-lmk:hover .gm-ltt, .gm-lmk.tt-open .gm-ltt { display:block; }
+/* 無料の地図（MapLibre）の吹き出しを今までの見た目に合わせる */
+.maplibregl-popup-content { background:#12141a !important; color:#eee; border:1px solid #ff9f1c; border-radius:10px !important; padding:10px 12px !important; font-size:13px; }
+.maplibregl-popup-tip { border-top-color:#ff9f1c !important; border-bottom-color:#ff9f1c !important; }
+.maplibregl-popup-close-button { color:#9a9aa6; font-size:18px; }
 
 /* パネルが隠れている時に画面の端に出るバー */
 #panel-edge { display:none; position:fixed; left:0; right:0; bottom:0; z-index:1250;
@@ -74,7 +1029,7 @@ body { background:#08090d; color:#e9e9ee; font-family:'Helvetica Neue',Arial,san
   align-items:center; justify-content:center; gap:10px; cursor:pointer; user-select:none; touch-action:none; }
 #panel-edge:active { background:rgba(14,16,20,0.95); }
 body.panel-hidden #panel-edge { display:flex; }
-#play-bar { display:none; position:absolute; left:60px; right:calc(12px + var(--panel-w,0px) + var(--edge-w,0px)); bottom:calc(12px + var(--sab, env(safe-area-inset-bottom,0px)) + var(--panel-h,0px) + var(--edge-h,0px)); z-index:1500; background:rgba(15,15,15,0.96); border:1px solid #ff9f1c; border-radius:12px; padding:10px 12px; box-shadow:0 4px 16px rgba(0,0,0,0.6); max-width:560px; margin-left:auto; }
+#play-bar { display:none; position:absolute; left:60px; right:calc(12px + var(--panel-w,0px) + var(--edge-w,0px)); bottom:calc(12px + var(--gm-attr-h,0px) + var(--sab, env(safe-area-inset-bottom,0px)) + var(--panel-h,0px) + var(--edge-h,0px)); z-index:1500; background:rgba(15,15,15,0.96); border:1px solid #ff9f1c; border-radius:12px; padding:10px 12px; box-shadow:0 4px 16px rgba(0,0,0,0.6); max-width:560px; margin-left:auto; }
 #play-bar.show { display:block; }
 /* ===== 録画モード：地図とルート再生だけを映す ===== */
 body.rec-mode #play-bar, body.rec-mode #preview-bar, body.rec-mode #panel-edge, body.rec-mode #gps-badge,
@@ -132,13 +1087,12 @@ body.rec-mode #rec-exit { display:block; }
   color:#e9e9ee; font-size:14px; padding:10px 16px; border-radius:20px; transition:opacity .4s ease; white-space:nowrap; }
 #rec-hint.hide { opacity:0; }
 .play-ctl { background:#181b23; border:1px solid #343b48; color:#ff9f1c; border-radius:8px; font-size:16px; padding:5px 10px; cursor:pointer; flex-shrink:0; }
-#preview-bar { display:none; position:absolute; left:60px; right:calc(12px + var(--panel-w,0px) + var(--edge-w,0px)); bottom:calc(12px + var(--sab, env(safe-area-inset-bottom,0px)) + var(--panel-h,0px) + var(--edge-h,0px)); z-index:1500; background:rgba(15,20,25,0.96); border:1px solid #2a6a8a; border-radius:12px; padding:12px; box-shadow:0 4px 16px rgba(0,0,0,0.6); max-width:520px; margin-left:auto; }
+#preview-bar { display:none; position:absolute; left:60px; right:calc(12px + var(--panel-w,0px) + var(--edge-w,0px)); bottom:calc(12px + var(--gm-attr-h,0px) + var(--sab, env(safe-area-inset-bottom,0px)) + var(--panel-h,0px) + var(--edge-h,0px)); z-index:1500; background:rgba(15,20,25,0.96); border:1px solid #2a6a8a; border-radius:12px; padding:12px; box-shadow:0 4px 16px rgba(0,0,0,0.6); max-width:520px; margin-left:auto; }
 #preview-bar.show { display:block; }
 #gps-badge { position:absolute; top:calc(8px + var(--sat-map, var(--sat, env(safe-area-inset-top,0px)))); left:calc(8px + env(safe-area-inset-left,0px)); z-index:1000; background:rgba(0,0,0,0.75); border-radius:20px; padding:5px 10px; font-size:11px; color:#6a6a76; pointer-events:none; }
 #gps-badge.good { color:#44cc44; }
 #gps-badge.bad { color:#cc4444; }
 #gps-badge.tappable { pointer-events:auto; cursor:pointer; border:1px solid #cc4444; }
-#compass-debug { display:none; position:absolute; top:calc(40px + var(--sat-map, var(--sat, env(safe-area-inset-top,0px)))); left:calc(8px + env(safe-area-inset-left,0px)); z-index:1000; background:rgba(0,0,0,0.75); border-radius:10px; padding:4px 8px; font-size:10px; color:#ffd27a; pointer-events:none; font-family:monospace; }
 #reach-card { display:none; position:fixed; z-index:1500; box-sizing:border-box; background:rgba(18,20,26,0.96); border:1px solid #343b48; border-left:4px solid #ff9f1c; border-radius:12px; padding:9px 10px 9px 12px; color:#e9e9ee; box-shadow:0 4px 16px rgba(0,0,0,0.5); align-items:center; gap:10px; cursor:pointer; }
 #reach-card .rc-text { flex:1; min-width:0; }
 #reach-card .rc-line { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -155,9 +1109,6 @@ body.rec-mode #rec-exit { display:block; }
   #photo-card { top:calc(var(--ad-shift,0px) + 8px); left:calc(60px + env(safe-area-inset-left,0px)); transform:none; width:min(300px, 42vw); }
   #photo-card img { max-height:calc(100dvh - var(--ad-shift,0px) - 110px); }
 }
-#seg-warn { position:absolute; z-index:1001; top:calc(8px + var(--sat-map, var(--sat, env(safe-area-inset-top,0px)))); left:50%; transform:translateX(-50%); align-items:center; gap:8px; background:rgba(40,24,0,0.92); border:1px solid #ff9f1c; color:#ffd27a; border-radius:18px; padding:5px 6px 5px 12px; font-size:12px; white-space:nowrap; box-shadow:0 2px 8px rgba(0,0,0,0.5); }
-#seg-warn button { background:#ff9f1c; color:#000; border:none; border-radius:12px; padding:5px 10px; font-size:12px; font-weight:700; cursor:pointer; }
-body.rec-mode #seg-warn { display:none !important; }
 #gps-help { display:none; position:fixed; inset:0; z-index:10060; background:rgba(0,0,0,0.75); align-items:center; justify-content:center; padding:16px; }
 #gps-help .gh-card { width:100%; max-width:420px; max-height:90vh; overflow-y:auto; background:#12141a; border:1px solid #343b48; border-radius:14px; padding:16px; color:#e9e9ee; }
 #gps-help .gh-title { font-size:15px; font-weight:700; color:#ff9f1c; margin-bottom:8px; }
@@ -166,7 +1117,7 @@ body.rec-mode #seg-warn { display:none !important; }
 #gps-help .gh-retry { width:100%; padding:10px; border-radius:8px; border:1px solid #ff9f1c; background:#ff9f1c; color:#000; font-weight:700; font-size:13px; cursor:pointer; }
 #gps-help .gh-close { width:100%; margin-top:8px; padding:9px; border-radius:8px; border:1px solid #343b48; background:transparent; color:#9a9aa6; font-size:12px; cursor:pointer; }
 
-#follow-btn { position:absolute; touch-action:manipulation; pointer-events:auto; bottom:calc(12px + var(--sab, env(safe-area-inset-bottom,0px)) + var(--panel-h,0px) + var(--edge-h,0px)); right:calc(12px + var(--panel-w,0px) + var(--edge-w,0px)); z-index:1000; width:44px; height:44px; border-radius:50%; border:2px solid #343b48; background:rgba(0,0,0,0.8); color:#7e7e8b; font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+#follow-btn { position:absolute; touch-action:manipulation; pointer-events:auto; bottom:calc(12px + var(--gm-attr-h,0px) + var(--sab, env(safe-area-inset-bottom,0px)) + var(--panel-h,0px) + var(--edge-h,0px)); right:calc(12px + var(--panel-w,0px) + var(--edge-w,0px)); z-index:1000; width:44px; height:44px; border-radius:50%; border:2px solid #343b48; background:rgba(0,0,0,0.8); color:#7e7e8b; font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
 #follow-btn.active { background:#ff9f1c; color:#000; border-color:#ff9f1c; }
 .maptype-btn { background:#181b23; border:1px solid #343b48; color:#9a9aa6; }
 .maptype-btn.active { background:#ff9f1c; border-color:#ff9f1c; color:#000; font-weight:700; }
@@ -493,9 +1444,9 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
 })();
 </script>
 
-<div id="map-wrap">
-  <div id="seg-warn" style="display:none;"><span id="seg-warn-text"></span><button onclick="retrySegsNow()" data-i18n="seg_warn_retry">取り直す</button></div>
-  <div id="map"></div>
+<div id="map-wrap" class="leaflet-touch">
+
+  <div id="gmap-box"><div id="map"></div></div>
   <div id="panel-edge"><span id="panel-edge-text">▲ パネル ▲</span></div>
   <div id="play-bar">
     <div style="display:flex;align-items:center;gap:8px;">
@@ -559,10 +1510,9 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
     </div>
   </div>
   <div id="gps-badge" data-i18n="gps_waiting" onclick="event.stopPropagation(); onGpsBadgeTap();" ontouchstart="event.stopPropagation();" ontouchend="event.stopPropagation();">📡 GPS待機中</div>
-  <div id="compass-debug"></div>
-  <button id="follow-btn" onclick="event.stopPropagation(); toggleFollow();"
+    <button id="follow-btn" onclick="event.stopPropagation(); toggleFollow();"
     ontouchend="event.stopPropagation();" ontouchstart="event.stopPropagation();"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="display:block;margin:auto;"><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-  <button id="map-controls-btn" onclick="event.stopPropagation(); toggleMapControlsPanel();" ontouchstart="event.stopPropagation();" ontouchend="event.stopPropagation();" style="position:absolute;touch-action:manipulation;bottom:calc(12px + var(--sab, env(safe-area-inset-bottom,0px)) + var(--panel-h,0px) + var(--edge-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;width:40px;height:40px;border-radius:8px;border:2px solid #343b48;background:rgba(0,0,0,0.85);color:#e9e9ee;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">🗺️</button>
+  <button id="map-controls-btn" onclick="event.stopPropagation(); toggleMapControlsPanel();" ontouchstart="event.stopPropagation();" ontouchend="event.stopPropagation();" style="position:absolute;touch-action:manipulation;bottom:calc(12px + var(--gm-attr-h,0px) + var(--sab, env(safe-area-inset-bottom,0px)) + var(--panel-h,0px) + var(--edge-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;width:40px;height:40px;border-radius:8px;border:2px solid #343b48;background:rgba(0,0,0,0.85);color:#e9e9ee;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">🗺️</button>
   <div id="map-controls-panel" style="display:none;position:absolute;max-height:calc(100dvh - var(--ad-shift,0px) - 74px - var(--gm-attr-h,0px) - var(--sat-map, var(--sat, env(safe-area-inset-top,0px))) - var(--sab, env(safe-area-inset-bottom,0px)) - var(--panel-h,0px) - var(--edge-h,0px));overflow-y:auto;-webkit-overflow-scrolling:touch;bottom:calc(60px + var(--gm-attr-h,0px) + var(--sab, env(safe-area-inset-bottom,0px)) + var(--panel-h,0px) + var(--edge-h,0px));left:calc(12px + env(safe-area-inset-left,0px));z-index:1000;background:rgba(20,20,20,0.95);border:1px solid #343b48;border-radius:10px;padding:12px;width:200px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
     <div style="font-size:10px;color:#7e7e8b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;" data-i18n="map_type_label">地図の種類</div>
     <div style="display:flex;gap:6px;margin-bottom:14px;">
@@ -574,14 +1524,10 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
     <select id="map-style-select" onchange="setMapStyle(this.value)" style="width:100%;background:#08090d;border:1px solid #262b36;border-radius:8px;color:#e9e9ee;padding:7px 8px;font-size:12px;margin-bottom:8px;">
       <option value="none"></option><option value="mono"></option><option value="dark"></option><option value="night"></option>
     </select>
-    <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:#d6d6de;cursor:pointer;margin-bottom:6px;">
-      <input type="checkbox" id="map-hide-poi" onchange="setMapStyleFlags()" style="width:15px;height:15px;">
-      <span data-i18n="style_hide_poi">店などを消す</span>
-    </label>
-    <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:#d6d6de;cursor:pointer;margin-bottom:14px;">
-      <input type="checkbox" id="map-hide-labels" onchange="setMapStyleFlags()" style="width:15px;height:15px;">
-      <span data-i18n="style_hide_labels">文字を消す</span>
-    </label>
+    <div style="font-size:10px;color:#7e7e8b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;" data-i18n="style_marks_label">文字とマーク</div>
+    <select id="map-label-mode" onchange="setMapLabelMode(this.value)" style="width:100%;background:#08090d;border:1px solid #343b48;color:#e9e9ee;border-radius:7px;padding:6px 8px;font-size:12px;margin-bottom:14px;">
+      <option value="all"></option><option value="names"></option><option value="none"></option>
+    </select>
     <button onclick="startPlayback()" style="width:100%;padding:8px;margin-bottom:14px;background:#ff9f1c;border:none;color:#000;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;" data-i18n="play_btn">▶ ルート再生</button>
     <div style="font-size:10px;color:#7e7e8b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;" data-i18n="layers_label">表示</div>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#d6d6de;margin-bottom:8px;cursor:pointer;">
@@ -1025,6 +1971,8 @@ const SUPPORTED_LANGS = ['ja','en','zh-CN','zh-TW','ko','es','fr','th','vi','de'
 const translations = {
 ja: {
   gps_waiting:'📡 GPS待機中', gps_error:'📡 GPS失敗', gps_accuracy:'📡 精度 ±{m}m',
+  style_marks_label:"文字とマーク", style_label_all:"全部表示", style_label_names:"地名・道路名・駅名だけ", style_label_none:"全部消す",
+  gps_fix_ios_other:"【iPhone（{app}）】\n1. 設定 → プライバシーとセキュリティ → 位置情報サービス をオン\n2. 同じ画面の一覧から「{app}」→「使用中のみ」\n3. {app} で、このページを読み込み直す",
   err_email_registered:"登録済みのメールアドレスです。", seg_warn_text:"道の線が取れていない区間：{n}", seg_warn_retry:"取り直す",
   verify_title:"メールアドレスの確認", verify_sent:"{email} に認証番号を送りました。10分以内に入力してください。", verify_code_label:"認証番号", verify_btn:"確認して登録", verify_resend:"認証番号をもう一度送る", verify_resend_wait:"もう一度送れるまで {s} 秒", verify_resent:"認証番号をもう一度送りました", verify_back:"戻る", err_code_invalid:"認証番号が違うか、有効期限（10分）が切れています。", verify_not_confirmed:"メールアドレスの確認がまだです。届いた認証番号を入力してください。", verify_check_spam:"届かない時は、迷惑メールのフォルダも見てください。",
   overwrite_save_btn:"上書き保存", save_as_btn:"別名で保存", confirm_same_name_overwrite:"同じフォルダに「{name}」があります。上書きしますか？", alert_overwrite_success:"「{name}」を上書き保存しました", delete_account_btn:"アカウントを削除", confirm_delete_account:"アカウントを削除すると、ルート・固定ポイント・写真・フォロー・いいね・設定など、すべてのデータが消え、元に戻せません。本当に削除しますか？", prompt_delete_account_word:"確認のため「{word}」と入力してください", alert_account_deleted:"アカウントを削除しました", alert_account_delete_fail:"アカウントを削除できませんでした：{err}", delete_account_word:"削除",
@@ -1084,6 +2032,8 @@ ja: {
 },
 en: {
   gps_waiting:'📡 Waiting for GPS', gps_error:'📡 GPS failed', gps_accuracy:'📡 Accuracy ±{m}m',
+  style_marks_label:"Labels & icons", style_label_all:"Show all", style_label_names:"Place, road & station names only", style_label_none:"Hide all",
+  gps_fix_ios_other:"[iPhone ({app})]\n1. Settings → Privacy & Security → turn on Location Services\n2. In the list on the same screen: \"{app}\" → \"While Using the App\"\n3. Reload this page in {app}",
   err_email_registered:"This email address is already registered.", seg_warn_text:"Segments without a road line: {n}", seg_warn_retry:"Retry",
   verify_title:"Verify your email", verify_sent:"We sent a verification code to {email}. Enter it within 10 minutes.", verify_code_label:"Verification code", verify_btn:"Verify and sign up", verify_resend:"Send the code again", verify_resend_wait:"You can resend in {s} s", verify_resent:"We sent the code again", verify_back:"Back", err_code_invalid:"The code is wrong or has expired (10 minutes).", verify_not_confirmed:"Your email is not verified yet. Enter the code we sent you.", verify_check_spam:"If it does not arrive, check your spam folder.",
   overwrite_save_btn:"Save (overwrite)", save_as_btn:"Save as new", confirm_same_name_overwrite:"\"{name}\" already exists in this folder. Overwrite it?", alert_overwrite_success:"\"{name}\" was overwritten", delete_account_btn:"Delete account", confirm_delete_account:"Deleting your account permanently removes all your data, including routes, fixed points, photos, follows, likes and settings. This cannot be undone. Delete your account?", prompt_delete_account_word:"To confirm, type \"{word}\"", alert_account_deleted:"Your account has been deleted", alert_account_delete_fail:"Could not delete your account: {err}", delete_account_word:"DELETE",
@@ -1143,6 +2093,8 @@ en: {
 },
 'zh-CN': {
   gps_waiting:'📡 等待GPS', gps_error:'📡 GPS失败', gps_accuracy:'📡 精度 ±{m}米',
+  style_marks_label:"文字与图标", style_label_all:"全部显示", style_label_names:"仅地名・道路名・车站名", style_label_none:"全部隐藏",
+  gps_fix_ios_other:"【iPhone（{app}）】\n1. 设置 → 隐私与安全性 → 打开定位服务\n2. 在同一页面的列表中：「{app}」→「使用App期间」\n3. 在{app}中重新加载此页面",
   err_email_registered:"该邮箱已注册。", seg_warn_text:"未获取道路线的路段：{n}", seg_warn_retry:"重新获取",
   verify_title:"验证邮箱", verify_sent:"验证码已发送至 {email}，请在10分钟内输入。", verify_code_label:"验证码", verify_btn:"验证并注册", verify_resend:"重新发送验证码", verify_resend_wait:"{s} 秒后可重新发送", verify_resent:"已重新发送验证码", verify_back:"返回", err_code_invalid:"验证码错误或已过期（10分钟）。", verify_not_confirmed:"邮箱尚未验证。请输入收到的验证码。", verify_check_spam:"如果没有收到，请查看垃圾邮件文件夹。",
   overwrite_save_btn:"覆盖保存", save_as_btn:"另存为", confirm_same_name_overwrite:"此文件夹中已有“{name}”。要覆盖吗？", alert_overwrite_success:"已覆盖保存“{name}”", delete_account_btn:"删除账号", confirm_delete_account:"删除账号后，路线、固定点、照片、关注、点赞、设置等所有数据都将被删除且无法恢复。确定要删除吗？", prompt_delete_account_word:"请输入“{word}”以确认", alert_account_deleted:"账号已删除", alert_account_delete_fail:"无法删除账号：{err}", delete_account_word:"删除",
@@ -1202,6 +2154,8 @@ en: {
 },
 'zh-TW': {
   gps_waiting:'📡 等待GPS', gps_error:'📡 GPS失敗', gps_accuracy:'📡 精度 ±{m}公尺',
+  style_marks_label:"文字與圖示", style_label_all:"全部顯示", style_label_names:"僅地名・道路名・車站名", style_label_none:"全部隱藏",
+  gps_fix_ios_other:"【iPhone（{app}）】\n1. 設定 → 隱私權與安全性 → 開啟定位服務\n2. 在同一頁面的列表中：「{app}」→「使用App期間」\n3. 在{app}中重新載入此頁面",
   err_email_registered:"此電子郵件已註冊。", seg_warn_text:"未取得道路線的路段：{n}", seg_warn_retry:"重新取得",
   verify_title:"驗證電子郵件", verify_sent:"驗證碼已寄至 {email}，請在10分鐘內輸入。", verify_code_label:"驗證碼", verify_btn:"驗證並註冊", verify_resend:"重新寄送驗證碼", verify_resend_wait:"{s} 秒後可重新寄送", verify_resent:"已重新寄送驗證碼", verify_back:"返回", err_code_invalid:"驗證碼錯誤或已過期（10分鐘）。", verify_not_confirmed:"電子郵件尚未驗證。請輸入收到的驗證碼。", verify_check_spam:"若未收到，請查看垃圾郵件資料夾。",
   overwrite_save_btn:"覆寫儲存", save_as_btn:"另存新檔", confirm_same_name_overwrite:"此資料夾中已有「{name}」。要覆寫嗎？", alert_overwrite_success:"已覆寫儲存「{name}」", delete_account_btn:"刪除帳號", confirm_delete_account:"刪除帳號後，路線、固定點、照片、追蹤、按讚、設定等所有資料都會被刪除且無法復原。確定要刪除嗎？", prompt_delete_account_word:"請輸入「{word}」以確認", alert_account_deleted:"帳號已刪除", alert_account_delete_fail:"無法刪除帳號：{err}", delete_account_word:"刪除",
@@ -1261,6 +2215,8 @@ en: {
 },
 ko: {
   gps_waiting:'📡 GPS 대기 중', gps_error:'📡 GPS 실패', gps_accuracy:'📡 정확도 ±{m}m',
+  style_marks_label:"글자와 아이콘", style_label_all:"모두 표시", style_label_names:"지명・도로명・역명만", style_label_none:"모두 숨기기",
+  gps_fix_ios_other:"[iPhone ({app})]\n1. 설정 → 개인정보 보호 및 보안 → 위치 서비스 켜기\n2. 같은 화면의 목록에서 「{app}」→「앱을 사용하는 동안」\n3. {app}에서 이 페이지 새로고침",
   err_email_registered:"이미 등록된 이메일 주소입니다.", seg_warn_text:"도로 선을 못 가져온 구간: {n}", seg_warn_retry:"다시 가져오기",
   verify_title:"이메일 확인", verify_sent:"{email}(으)로 인증번호를 보냈습니다. 10분 안에 입력하세요.", verify_code_label:"인증번호", verify_btn:"확인하고 가입", verify_resend:"인증번호 다시 보내기", verify_resend_wait:"{s}초 후 다시 보낼 수 있습니다", verify_resent:"인증번호를 다시 보냈습니다", verify_back:"돌아가기", err_code_invalid:"인증번호가 틀렸거나 유효시간(10분)이 지났습니다.", verify_not_confirmed:"이메일 확인이 아직 안 됐습니다. 받은 인증번호를 입력하세요.", verify_check_spam:"오지 않으면 스팸 폴더도 확인하세요.",
   overwrite_save_btn:"덮어쓰기 저장", save_as_btn:"다른 이름으로 저장", confirm_same_name_overwrite:"이 폴더에 \"{name}\"이(가) 이미 있습니다. 덮어쓸까요?", alert_overwrite_success:"\"{name}\"을(를) 덮어썼습니다", delete_account_btn:"계정 삭제", confirm_delete_account:"계정을 삭제하면 루트, 고정 포인트, 사진, 팔로우, 좋아요, 설정 등 모든 데이터가 삭제되며 되돌릴 수 없습니다. 정말 삭제할까요?", prompt_delete_account_word:"확인을 위해 \"{word}\"를 입력하세요", alert_account_deleted:"계정을 삭제했습니다", alert_account_delete_fail:"계정을 삭제할 수 없습니다: {err}", delete_account_word:"삭제",
@@ -1320,6 +2276,8 @@ ko: {
 },
 es: {
   gps_waiting:'📡 Esperando GPS', gps_error:'📡 Error de GPS', gps_accuracy:'📡 Precisión ±{m}m',
+  style_marks_label:"Textos e iconos", style_label_all:"Mostrar todo", style_label_names:"Solo lugares, calles y estaciones", style_label_none:"Ocultar todo",
+  gps_fix_ios_other:"[iPhone ({app})]\n1. Ajustes → Privacidad y seguridad → activa Localización\n2. En la lista de la misma pantalla: «{app}» → «Cuando se use la app»\n3. Recarga esta página en {app}",
   err_email_registered:"Este correo ya está registrado.", seg_warn_text:"Tramos sin línea de calle: {n}", seg_warn_retry:"Reintentar",
   verify_title:"Verifica tu correo", verify_sent:"Enviamos un código a {email}. Escríbelo en 10 minutos.", verify_code_label:"Código de verificación", verify_btn:"Verificar y registrarme", verify_resend:"Enviar el código de nuevo", verify_resend_wait:"Podrás reenviarlo en {s} s", verify_resent:"Enviamos el código de nuevo", verify_back:"Volver", err_code_invalid:"El código es incorrecto o caducó (10 minutos).", verify_not_confirmed:"Tu correo aún no está verificado. Escribe el código que te enviamos.", verify_check_spam:"Si no llega, revisa la carpeta de spam.",
   overwrite_save_btn:"Guardar (sobrescribir)", save_as_btn:"Guardar como nuevo", confirm_same_name_overwrite:"Ya existe «{name}» en esta carpeta. ¿Sobrescribirlo?", alert_overwrite_success:"Se sobrescribió «{name}»", delete_account_btn:"Eliminar cuenta", confirm_delete_account:"Al eliminar tu cuenta se borran para siempre todos tus datos: rutas, puntos fijos, fotos, seguimientos, me gusta y ajustes. No se puede deshacer. ¿Eliminar tu cuenta?", prompt_delete_account_word:"Para confirmar, escribe «{word}»", alert_account_deleted:"Tu cuenta ha sido eliminada", alert_account_delete_fail:"No se pudo eliminar la cuenta: {err}", delete_account_word:"ELIMINAR",
@@ -1379,6 +2337,8 @@ es: {
 },
 fr: {
   gps_waiting:'📡 En attente du GPS', gps_error:'📡 Échec du GPS', gps_accuracy:'📡 Précision ±{m}m',
+  style_marks_label:"Textes et icônes", style_label_all:"Tout afficher", style_label_names:"Lieux, routes et gares seulement", style_label_none:"Tout masquer",
+  gps_fix_ios_other:"[iPhone ({app})]\n1. Réglages → Confidentialité et sécurité → activez Service de localisation\n2. Dans la liste du même écran : « {app} » → « Lorsque l’app est active »\n3. Rechargez cette page dans {app}",
   err_email_registered:"Cette adresse e-mail est déjà enregistrée.", seg_warn_text:"Tronçons sans tracé routier : {n}", seg_warn_retry:"Réessayer",
   verify_title:"Vérifiez votre e-mail", verify_sent:"Un code a été envoyé à {email}. Saisissez-le dans les 10 minutes.", verify_code_label:"Code de vérification", verify_btn:"Vérifier et s’inscrire", verify_resend:"Renvoyer le code", verify_resend_wait:"Renvoi possible dans {s} s", verify_resent:"Le code a été renvoyé", verify_back:"Retour", err_code_invalid:"Code incorrect ou expiré (10 minutes).", verify_not_confirmed:"Votre e-mail n’est pas encore vérifié. Saisissez le code reçu.", verify_check_spam:"S’il n’arrive pas, vérifiez vos spams.",
   overwrite_save_btn:"Enregistrer (remplacer)", save_as_btn:"Enregistrer sous", confirm_same_name_overwrite:"« {name} » existe déjà dans ce dossier. Le remplacer ?", alert_overwrite_success:"« {name} » a été remplacé", delete_account_btn:"Supprimer le compte", confirm_delete_account:"La suppression du compte efface définitivement toutes vos données : itinéraires, points fixes, photos, abonnements, j’aime et réglages. Action irréversible. Supprimer votre compte ?", prompt_delete_account_word:"Pour confirmer, saisissez « {word} »", alert_account_deleted:"Votre compte a été supprimé", alert_account_delete_fail:"Impossible de supprimer le compte : {err}", delete_account_word:"SUPPRIMER",
@@ -1438,6 +2398,8 @@ fr: {
 },
 th: {
   gps_waiting:'📡 กำลังรอ GPS', gps_error:'📡 GPS ล้มเหลว', gps_accuracy:'📡 ความแม่นยำ ±{m}ม.',
+  style_marks_label:"ข้อความและไอคอน", style_label_all:"แสดงทั้งหมด", style_label_names:"เฉพาะชื่อสถานที่ ถนน และสถานี", style_label_none:"ซ่อนทั้งหมด",
+  gps_fix_ios_other:"[iPhone ({app})]\n1. การตั้งค่า → ความเป็นส่วนตัวและความปลอดภัย → เปิดบริการหาตำแหน่ง\n2. ในรายการหน้าเดียวกัน: «{app}» → «ขณะใช้แอป»\n3. โหลดหน้านี้ใหม่ใน {app}",
   err_email_registered:"อีเมลนี้ลงทะเบียนแล้ว", seg_warn_text:"ช่วงที่ยังไม่ได้เส้นถนน: {n}", seg_warn_retry:"ลองใหม่",
   verify_title:"ยืนยันอีเมล", verify_sent:"ส่งรหัสยืนยันไปที่ {email} แล้ว โปรดกรอกภายใน 10 นาที", verify_code_label:"รหัสยืนยัน", verify_btn:"ยืนยันและสมัคร", verify_resend:"ส่งรหัสอีกครั้ง", verify_resend_wait:"ส่งอีกครั้งได้ใน {s} วินาที", verify_resent:"ส่งรหัสอีกครั้งแล้ว", verify_back:"กลับ", err_code_invalid:"รหัสไม่ถูกต้องหรือหมดอายุ (10 นาที)", verify_not_confirmed:"ยังไม่ได้ยืนยันอีเมล โปรดกรอกรหัสที่ได้รับ", verify_check_spam:"หากไม่ได้รับ โปรดตรวจสอบโฟลเดอร์สแปม",
   overwrite_save_btn:"บันทึกทับ", save_as_btn:"บันทึกเป็นชื่อใหม่", confirm_same_name_overwrite:"มี \"{name}\" อยู่ในโฟลเดอร์นี้แล้ว ต้องการบันทึกทับหรือไม่?", alert_overwrite_success:"บันทึกทับ \"{name}\" แล้ว", delete_account_btn:"ลบบัญชี", confirm_delete_account:"การลบบัญชีจะลบข้อมูลทั้งหมด เช่น เส้นทาง จุดถาวร รูปภาพ การติดตาม ถูกใจ และการตั้งค่า อย่างถาวรและกู้คืนไม่ได้ ต้องการลบบัญชีหรือไม่?", prompt_delete_account_word:"พิมพ์ \"{word}\" เพื่อยืนยัน", alert_account_deleted:"ลบบัญชีแล้ว", alert_account_delete_fail:"ไม่สามารถลบบัญชีได้: {err}", delete_account_word:"ลบ",
@@ -1497,6 +2459,8 @@ th: {
 },
 de: {
   gps_waiting:'📡 Warte auf GPS', gps_error:'📡 GPS-Fehler', gps_accuracy:'📡 Genauigkeit ±{m}m',
+  style_marks_label:"Beschriftungen & Symbole", style_label_all:"Alles anzeigen", style_label_names:"Nur Orte, Straßen und Bahnhöfe", style_label_none:"Alles ausblenden",
+  gps_fix_ios_other:"[iPhone ({app})]\n1. Einstellungen → Datenschutz & Sicherheit → Ortungsdienste einschalten\n2. In der Liste im selben Bildschirm: „{app}“ → „Beim Verwenden der App“\n3. Diese Seite in {app} neu laden",
   err_email_registered:"Diese E-Mail-Adresse ist bereits registriert.", seg_warn_text:"Abschnitte ohne Straßenlinie: {n}", seg_warn_retry:"Erneut laden",
   verify_title:"E-Mail bestätigen", verify_sent:"Wir haben einen Code an {email} gesendet. Gib ihn innerhalb von 10 Minuten ein.", verify_code_label:"Bestätigungscode", verify_btn:"Bestätigen und registrieren", verify_resend:"Code erneut senden", verify_resend_wait:"Erneut senden in {s} s", verify_resent:"Code wurde erneut gesendet", verify_back:"Zurück", err_code_invalid:"Der Code ist falsch oder abgelaufen (10 Minuten).", verify_not_confirmed:"Deine E-Mail ist noch nicht bestätigt. Gib den erhaltenen Code ein.", verify_check_spam:"Falls nichts ankommt, prüfe den Spam-Ordner.",
   overwrite_save_btn:"Speichern (überschreiben)", save_as_btn:"Unter neuem Namen speichern", confirm_same_name_overwrite:"„{name}“ ist in diesem Ordner bereits vorhanden. Überschreiben?", alert_overwrite_success:"„{name}“ wurde überschrieben", delete_account_btn:"Konto löschen", confirm_delete_account:"Beim Löschen des Kontos werden alle deine Daten dauerhaft entfernt – Routen, feste Punkte, Fotos, Follows, Likes und Einstellungen. Das kann nicht rückgängig gemacht werden. Konto löschen?", prompt_delete_account_word:"Zur Bestätigung „{word}“ eingeben", alert_account_deleted:"Dein Konto wurde gelöscht", alert_account_delete_fail:"Konto konnte nicht gelöscht werden: {err}", delete_account_word:"LÖSCHEN",
@@ -1556,6 +2520,8 @@ de: {
 },
 ru: {
   gps_waiting:'📡 Ожидание GPS', gps_error:'📡 Ошибка GPS', gps_accuracy:'📡 Точность ±{m}м',
+  style_marks_label:"Подписи и значки", style_label_all:"Показать всё", style_label_names:"Только места, дороги и станции", style_label_none:"Скрыть всё",
+  gps_fix_ios_other:"[iPhone ({app})]\n1. Настройки → Конфиденциальность и безопасность → включите Службы геолокации\n2. В списке на том же экране: «{app}» → «При использовании приложения»\n3. Перезагрузите эту страницу в {app}",
   err_email_registered:"Этот адрес уже зарегистрирован.", seg_warn_text:"Участки без линии дороги: {n}", seg_warn_retry:"Повторить",
   verify_title:"Подтвердите почту", verify_sent:"Мы отправили код на {email}. Введите его в течение 10 минут.", verify_code_label:"Код подтверждения", verify_btn:"Подтвердить и зарегистрироваться", verify_resend:"Отправить код ещё раз", verify_resend_wait:"Повторно через {s} с", verify_resent:"Код отправлен ещё раз", verify_back:"Назад", err_code_invalid:"Код неверный или истёк (10 минут).", verify_not_confirmed:"Почта ещё не подтверждена. Введите полученный код.", verify_check_spam:"Если письма нет, проверьте папку «Спам».",
   overwrite_save_btn:"Сохранить (перезаписать)", save_as_btn:"Сохранить как новый", confirm_same_name_overwrite:"«{name}» уже есть в этой папке. Перезаписать?", alert_overwrite_success:"«{name}» перезаписан", delete_account_btn:"Удалить аккаунт", confirm_delete_account:"При удалении аккаунта все ваши данные — маршруты, точки, фото, подписки, отметки «нравится» и настройки — будут удалены без возможности восстановления. Удалить аккаунт?", prompt_delete_account_word:"Для подтверждения введите «{word}»", alert_account_deleted:"Аккаунт удалён", alert_account_delete_fail:"Не удалось удалить аккаунт: {err}", delete_account_word:"УДАЛИТЬ",
@@ -1615,6 +2581,8 @@ ru: {
 },
 pt: {
   gps_waiting:'📡 Aguardando GPS', gps_error:'📡 Falha no GPS', gps_accuracy:'📡 Precisão ±{m}m',
+  style_marks_label:"Textos e ícones", style_label_all:"Mostrar tudo", style_label_names:"Só lugares, ruas e estações", style_label_none:"Ocultar tudo",
+  gps_fix_ios_other:"[iPhone ({app})]\n1. Ajustes → Privacidade e Segurança → ative Serviços de Localização\n2. Na lista da mesma tela: «{app}» → «Durante o Uso do App»\n3. Recarregue esta página no {app}",
   err_email_registered:"Este e-mail já está cadastrado.", seg_warn_text:"Trechos sem linha de rua: {n}", seg_warn_retry:"Tentar de novo",
   verify_title:"Confirme seu e-mail", verify_sent:"Enviamos um código para {email}. Digite em até 10 minutos.", verify_code_label:"Código de verificação", verify_btn:"Verificar e cadastrar", verify_resend:"Enviar o código de novo", verify_resend_wait:"Reenvio em {s} s", verify_resent:"Enviamos o código de novo", verify_back:"Voltar", err_code_invalid:"Código incorreto ou expirado (10 minutos).", verify_not_confirmed:"Seu e-mail ainda não foi confirmado. Digite o código recebido.", verify_check_spam:"Se não chegar, veja a pasta de spam.",
   overwrite_save_btn:"Salvar (substituir)", save_as_btn:"Salvar como novo", confirm_same_name_overwrite:"Já existe «{name}» nesta pasta. Substituir?", alert_overwrite_success:"«{name}» foi substituída", delete_account_btn:"Excluir conta", confirm_delete_account:"Ao excluir a conta, todos os seus dados — rotas, pontos fixos, fotos, seguidores, curtidas e configurações — serão apagados para sempre. Não é possível desfazer. Excluir a conta?", prompt_delete_account_word:"Para confirmar, digite «{word}»", alert_account_deleted:"Sua conta foi excluída", alert_account_delete_fail:"Não foi possível excluir a conta: {err}", delete_account_word:"EXCLUIR",
@@ -1674,6 +2642,8 @@ pt: {
 },
 ar: {
   gps_waiting:'📡 في انتظار GPS', gps_error:'📡 فشل GPS', gps_accuracy:'📡 الدقة ±{m} م',
+  style_marks_label:"النصوص والرموز", style_label_all:"إظهار الكل", style_label_names:"أسماء الأماكن والطرق والمحطات فقط", style_label_none:"إخفاء الكل",
+  gps_fix_ios_other:"[iPhone ({app})]\n1. الإعدادات ← الخصوصية والأمن ← شغّل خدمات الموقع\n2. من القائمة في الشاشة نفسها: «{app}» ← «أثناء استخدام التطبيق»\n3. أعد تحميل هذه الصفحة في {app}",
   err_email_registered:"هذا البريد الإلكتروني مسجّل بالفعل.", seg_warn_text:"مقاطع بلا خط طريق: {n}", seg_warn_retry:"إعادة المحاولة",
   verify_title:"تأكيد البريد الإلكتروني", verify_sent:"أرسلنا رمز تحقق إلى {email}. أدخله خلال 10 دقائق.", verify_code_label:"رمز التحقق", verify_btn:"تحقق وسجّل", verify_resend:"أعد إرسال الرمز", verify_resend_wait:"يمكنك إعادة الإرسال بعد {s} ث", verify_resent:"أعدنا إرسال الرمز", verify_back:"رجوع", err_code_invalid:"الرمز غير صحيح أو انتهت صلاحيته (10 دقائق).", verify_not_confirmed:"لم يتم تأكيد بريدك بعد. أدخل الرمز الذي وصلك.", verify_check_spam:"إن لم يصل، تحقق من مجلد الرسائل غير المرغوب فيها.",
   overwrite_save_btn:"حفظ (استبدال)", save_as_btn:"حفظ باسم جديد", confirm_same_name_overwrite:"يوجد «{name}» في هذا المجلد. هل تريد استبداله؟", alert_overwrite_success:"تم استبدال «{name}»", delete_account_btn:"حذف الحساب", confirm_delete_account:"حذف الحساب يزيل جميع بياناتك نهائيًا: المسارات والنقاط الثابتة والصور والمتابعات والإعجابات والإعدادات، ولا يمكن التراجع. هل تريد حذف حسابك؟", prompt_delete_account_word:"للتأكيد، اكتب «{word}»", alert_account_deleted:"تم حذف حسابك", alert_account_delete_fail:"تعذّر حذف الحساب: {err}", delete_account_word:"حذف",
@@ -1733,6 +2703,8 @@ ar: {
 },
 it: {
   gps_waiting:'📡 In attesa del GPS', gps_error:'📡 GPS non riuscito', gps_accuracy:'📡 Precisione ±{m}m',
+  style_marks_label:"Testi e icone", style_label_all:"Mostra tutto", style_label_names:"Solo luoghi, strade e stazioni", style_label_none:"Nascondi tutto",
+  gps_fix_ios_other:"[iPhone ({app})]\n1. Impostazioni → Privacy e sicurezza → attiva Localizzazione\n2. Nell’elenco della stessa schermata: «{app}» → «Mentre usi l’app»\n3. Ricarica questa pagina in {app}",
   err_email_registered:"Questa email è già registrata.", seg_warn_text:"Tratti senza linea stradale: {n}", seg_warn_retry:"Riprova",
   verify_title:"Verifica la tua email", verify_sent:"Abbiamo inviato un codice a {email}. Inseriscilo entro 10 minuti.", verify_code_label:"Codice di verifica", verify_btn:"Verifica e registrati", verify_resend:"Invia di nuovo il codice", verify_resend_wait:"Puoi reinviare tra {s} s", verify_resent:"Codice inviato di nuovo", verify_back:"Indietro", err_code_invalid:"Codice errato o scaduto (10 minuti).", verify_not_confirmed:"La tua email non è ancora verificata. Inserisci il codice ricevuto.", verify_check_spam:"Se non arriva, controlla la cartella spam.",
   overwrite_save_btn:"Salva (sovrascrivi)", save_as_btn:"Salva con nome", confirm_same_name_overwrite:"«{name}» esiste già in questa cartella. Sovrascriverlo?", alert_overwrite_success:"«{name}» è stato sovrascritto", delete_account_btn:"Elimina account", confirm_delete_account:"Eliminando l’account verranno cancellati per sempre tutti i tuoi dati: percorsi, punti fissi, foto, follow, mi piace e impostazioni. Operazione irreversibile. Eliminare l’account?", prompt_delete_account_word:"Per confermare, digita «{word}»", alert_account_deleted:"Il tuo account è stato eliminato", alert_account_delete_fail:"Impossibile eliminare l’account: {err}", delete_account_word:"ELIMINA",
@@ -1792,6 +2764,8 @@ it: {
 },
 id: {
   gps_waiting:'📡 Menunggu GPS', gps_error:'📡 GPS gagal', gps_accuracy:'📡 Akurasi ±{m}m',
+  style_marks_label:"Teks & ikon", style_label_all:"Tampilkan semua", style_label_names:"Hanya nama tempat, jalan & stasiun", style_label_none:"Sembunyikan semua",
+  gps_fix_ios_other:"[iPhone ({app})]\n1. Pengaturan → Privasi & Keamanan → nyalakan Layanan Lokasi\n2. Di daftar pada layar yang sama: «{app}» → «Saat Menggunakan App»\n3. Muat ulang halaman ini di {app}",
   err_email_registered:"Email ini sudah terdaftar.", seg_warn_text:"Ruas tanpa garis jalan: {n}", seg_warn_retry:"Coba lagi",
   verify_title:"Verifikasi email", verify_sent:"Kami mengirim kode ke {email}. Masukkan dalam 10 menit.", verify_code_label:"Kode verifikasi", verify_btn:"Verifikasi dan daftar", verify_resend:"Kirim ulang kode", verify_resend_wait:"Bisa kirim ulang dalam {s} dtk", verify_resent:"Kode sudah dikirim ulang", verify_back:"Kembali", err_code_invalid:"Kode salah atau sudah kedaluwarsa (10 menit).", verify_not_confirmed:"Email belum diverifikasi. Masukkan kode yang diterima.", verify_check_spam:"Jika tidak datang, periksa folder spam.",
   overwrite_save_btn:"Simpan (timpa)", save_as_btn:"Simpan sebagai baru", confirm_same_name_overwrite:"\"{name}\" sudah ada di folder ini. Timpa?", alert_overwrite_success:"\"{name}\" telah ditimpa", delete_account_btn:"Hapus akun", confirm_delete_account:"Menghapus akun akan menghapus semua data Anda secara permanen: rute, titik tetap, foto, ikutan, suka, dan pengaturan. Tidak dapat dibatalkan. Hapus akun?", prompt_delete_account_word:"Untuk konfirmasi, ketik \"{word}\"", alert_account_deleted:"Akun Anda telah dihapus", alert_account_delete_fail:"Tidak dapat menghapus akun: {err}", delete_account_word:"HAPUS",
@@ -1851,6 +2825,8 @@ id: {
 },
 vi: {
   gps_waiting:'📡 Đang chờ GPS', gps_error:'📡 GPS lỗi', gps_accuracy:'📡 Độ chính xác ±{m}m',
+  style_marks_label:"Chữ và biểu tượng", style_label_all:"Hiện tất cả", style_label_names:"Chỉ tên địa danh, đường và ga", style_label_none:"Ẩn tất cả",
+  gps_fix_ios_other:"[iPhone ({app})]\n1. Cài đặt → Quyền riêng tư & Bảo mật → bật Dịch vụ định vị\n2. Trong danh sách cùng màn hình: «{app}» → «Khi dùng ứng dụng»\n3. Tải lại trang này trong {app}",
   err_email_registered:"Email này đã được đăng ký.", seg_warn_text:"Đoạn chưa có đường đi: {n}", seg_warn_retry:"Thử lại",
   verify_title:"Xác minh email", verify_sent:"Đã gửi mã xác minh tới {email}. Hãy nhập trong 10 phút.", verify_code_label:"Mã xác minh", verify_btn:"Xác minh và đăng ký", verify_resend:"Gửi lại mã", verify_resend_wait:"Có thể gửi lại sau {s} giây", verify_resent:"Đã gửi lại mã", verify_back:"Quay lại", err_code_invalid:"Mã sai hoặc đã hết hạn (10 phút).", verify_not_confirmed:"Email chưa được xác minh. Hãy nhập mã đã nhận.", verify_check_spam:"Nếu không nhận được, hãy xem thư mục spam.",
   overwrite_save_btn:"Lưu (ghi đè)", save_as_btn:"Lưu thành bản mới", confirm_same_name_overwrite:"\"{name}\" đã có trong thư mục này. Ghi đè?", alert_overwrite_success:"Đã ghi đè \"{name}\"", delete_account_btn:"Xóa tài khoản", confirm_delete_account:"Xóa tài khoản sẽ xóa vĩnh viễn mọi dữ liệu của bạn: tuyến đường, điểm cố định, ảnh, theo dõi, lượt thích và cài đặt. Không thể hoàn tác. Xóa tài khoản?", prompt_delete_account_word:"Để xác nhận, hãy nhập \"{word}\"", alert_account_deleted:"Đã xóa tài khoản", alert_account_delete_fail:"Không thể xóa tài khoản: {err}", delete_account_word:"XÓA",
@@ -2128,6 +3104,10 @@ const MAP_HIDE_LABELS = [{elementType:'labels', stylers:[{visibility:'off'}]}];
 let currentMapStyle = localStorage.getItem('navi_map_style') || 'none';
 let mapHidePOI = localStorage.getItem('navi_map_hide_poi') === '1';
 let mapHideLabels = localStorage.getItem('navi_map_hide_labels') === '1';
+// G版：文字とマーク（all＝全部表示／names＝地名・道路名・駅名だけ／none＝全部消す）
+// まだ選んだことがない人は、今の版の2つのチェックから引き継ぐ（文字を消す→全部消す、店などを消すだけ→地名・道路名・駅名だけ）
+let mapLabelMode = localStorage.getItem('navi_map_label_mode') || (mapHideLabels ? 'none' : (mapHidePOI ? 'names' : 'all'));
+if(!['all','names','none'].includes(mapLabelMode)) mapLabelMode = 'all';
 
 // 選んだものを重ねて1つのスタイルにする
 function buildMapStyles(){
@@ -2164,15 +3144,24 @@ function setMapStyleFlags(){
   rebuildGoogleLayer();
 }
 
+function setMapLabelMode(v){
+  mapLabelMode = ['all','names','none'].includes(v) ? v : 'all';
+  localStorage.setItem('navi_map_label_mode', mapLabelMode);
+  if(!usingGoogleMap){ alert(t('google_map_not_loaded')); return; }
+  rebuildGoogleLayer();
+}
+
 function setMapStyleLabels(){
   const sel = document.getElementById('map-style-select');
   if(!sel) return;
   const keys = ['style_normal','style_mono','style_dark','style_night'];
   keys.forEach((k,i)=>{ sel.options[i].textContent = t(k); });
   sel.value = MAP_BASE_STYLES[currentMapStyle] ? currentMapStyle : 'none';
-  const poi = document.getElementById('map-hide-poi'), lab = document.getElementById('map-hide-labels');
-  if(poi) poi.checked = mapHidePOI;
-  if(lab) lab.checked = mapHideLabels;
+  const lm = document.getElementById('map-label-mode');
+  if(lm){
+    ['style_label_all','style_label_names','style_label_none'].forEach((k,i)=>{ lm.options[i].textContent = t(k); });
+    lm.value = mapLabelMode;
+  }
 }
 
 function setMapType(type){
@@ -2268,15 +3257,7 @@ function readHeading(e){
   if(ios) return (h + 360) % 360;
   return (h + screenAngle() + 360) % 360;
 }
-// 【確認用・一時的】回転モード中だけ、センサーの値と画面の向きを表示する
-function updateCompassDebug(){
-  const el = document.getElementById('compass-debug');
-  if(!el) return;
-  if(compassMode !== 'heading'){ el.style.display = 'none'; return; }
-  const r = v => (typeof v === 'number') ? Math.round(v) : v;
-  el.style.display = 'block';
-  el.textContent = `${headingSource === 'gps' ? '🛰 GPS' : '📱'} ${r(headingTarget)}° | raw ${r(headingDebug.raw)}° | wo ${r(headingDebug.wo)} | so ${r(headingDebug.so)}`;
-}
+function updateCompassDebug(){}   // （確認用の表示は、Pixel での確認が終わったので消した）
 function setHeadingTarget(h, src){
   headingSource = src;
   if(headingTarget !== null && Math.abs(angDiff(h, headingTarget)) < HEADING_DEAD_ZONE) return;
@@ -2528,7 +3509,12 @@ function gpsEnvKey(){
   const android = /Android/.test(ua);
   const line = /\bLine\//i.test(ua);
   if(isNativeApp()) return 'gps_fix_android_app';
-  if(ios) return line ? 'gps_fix_ios_line' : 'gps_fix_ios_safari';
+  if(ios){
+    if(line) return 'gps_fix_ios_line';
+    // Safari 以外のブラウザ：設定の一覧に出るアプリ名で案内する
+    const other = /CriOS/.test(ua) ? 'Chrome' : /FxiOS/.test(ua) ? 'Firefox' : /EdgiOS/.test(ua) ? 'Edge' : /OPiOS|OPT\//.test(ua) ? 'Opera' : null;
+    return other ? { key: 'gps_fix_ios_other', app: other } : 'gps_fix_ios_safari';
+  }
   if(android) return line ? 'gps_fix_android_line' : 'gps_fix_android_browser';
   return 'gps_fix_pc';
 }
@@ -2536,7 +3522,8 @@ function showGpsHelp(){
   const code = gpsErrCode || 2;
   document.getElementById('gh-title').textContent = t('gps_help_title');
   document.getElementById('gh-why').textContent = t(code === 1 ? 'gps_why_denied' : code === 3 ? 'gps_why_timeout' : 'gps_why_unavailable');
-  document.getElementById('gh-steps').textContent = t(gpsEnvKey());
+  const env = gpsEnvKey();
+  document.getElementById('gh-steps').textContent = (typeof env === 'string') ? t(env) : t(env.key, { app: env.app });
   document.getElementById('gh-retry').textContent = t('gps_help_retry');
   document.getElementById('gh-close').textContent = t('gps_help_close');
   document.getElementById('gps-help').style.display = 'flex';
@@ -2553,14 +3540,10 @@ function retryGPSFromHelp(){
 // パネルに隠れないよう、見えている部分の中心に来るように寄せる
 // 範囲表示の余白（パネルに隠れる分を足す）
 function fitPadTL(base){ const b = base||50; return [b, b]; }
-function fitPadBR(base){
-  const b = base||50;
-  const cs = getComputedStyle(document.documentElement);
-  const px = k => parseFloat(cs.getPropertyValue(k)) || 0;
-  return [b + px('--panel-w') + px('--edge-w'), b + px('--panel-h') + px('--edge-h')];
-}
+function fitPadBR(base){ const b = base||50; return [b, b]; }   // 地図はパネルに隠れない範囲だけなので、パネル分の余白は不要
 
 function panelOffset(){
+  return { x: 0, y: 0 };   // 地図はパネルに隠れない範囲だけなので、ずらしは不要
   const land = isLandscapePanel();
   const cs = getComputedStyle(document.documentElement);
   const px = k => parseFloat(cs.getPropertyValue(k)) || 0;
@@ -3374,31 +4357,49 @@ function invalidateAllSegs(){ points.forEach(p=>delete p.segPath); }
 
 // ===== 道の線が取れなかった区間 =====
 // ・道に沿った線は、区間ごとに道路のサーバーへ問い合わせて取る（取れるまでは薄い点線の直線）
-// ・取れなかった時（電波が弱い・サーバーが混んでいる）は、5秒後・15秒後・1分後に自動でもう一度取りに行く。電波が戻った時も取りに行く
-// ・それでも取れない区間がある時は、地図の上に「道の線が取れていない区間：n ［取り直す］」を出す（押すとすぐ取りに行く）
-let segRetryStep = 0, segRetryTimer = null;
-const SEG_RETRY_WAITS = [5000, 15000, 60000];
+// ・取れなかった時（電波が弱い・サーバーが混んでいる）は、取れるまでずっと自動で取り直す：5秒後・15秒後・30秒後、その後は1分ごと
+// ・電波が戻った時、アプリを裏から戻した時・画面をつけた時も、すぐ取り直す
+// ・取り直しは、取れていない区間だけを問い合わせ、取れた時だけ線を描き直す（取れない間は地図を描き直さない）
+// ・画面には何も出さない（点線の直線が「取得中」の印）
+let segRetryStep = 0, segRetryTimer = null, segFetching = false;
+const SEG_RETRY_WAITS = [5000, 15000, 30000, 60000];
 function segNeedsRoad(i){ const m = segModeOf(i); return useRoad && !segIsStraight(m) && m !== 'straight'; }
-function countMissingSegs(){
-  let n = 0;
-  for(let i=0;i<points.length-1;i++){ const a = points[i]; if(segNeedsRoad(i) && !(a.segPath && a.segPath.length>1)) n++; }
-  return n;
+function missingSegIndexes(){
+  const out = [];
+  for(let i=0;i<points.length-1;i++){ const a = points[i]; if(segNeedsRoad(i) && !(a.segPath && a.segPath.length>1)) out.push(i); }
+  return out;
 }
-function updateSegWarn(){
-  const el = document.getElementById('seg-warn'); if(!el) return;
-  const n = (points.length >= 2) ? countMissingSegs() : 0;
-  const busy = !!segRetryTimer;
-  el.style.display = (n > 0 && !busy) ? 'flex' : 'none';
-  const tx = document.getElementById('seg-warn-text'); if(tx) tx.textContent = t('seg_warn_text', { n });
-}
+function countMissingSegs(){ return missingSegIndexes().length; }
 function scheduleSegRetry(){
   clearTimeout(segRetryTimer); segRetryTimer = null;
-  if(segRetryStep >= SEG_RETRY_WAITS.length || !countMissingSegs()){ updateSegWarn(); return; }
-  segRetryTimer = setTimeout(()=>{ segRetryTimer = null; segRetryStep++; updatePolyline(); }, SEG_RETRY_WAITS[segRetryStep]);
-  updateSegWarn();
+  if(!countMissingSegs()){ segRetryStep = 0; return; }
+  const wait = SEG_RETRY_WAITS[Math.min(segRetryStep, SEG_RETRY_WAITS.length - 1)];
+  segRetryTimer = setTimeout(()=>{ segRetryTimer = null; segRetryStep++; fetchMissingSegs(); }, wait);
 }
-function retrySegsNow(){ segRetryStep = 0; clearTimeout(segRetryTimer); segRetryTimer = null; updatePolyline(); }
+async function fetchMissingSegs(){
+  if(segFetching) return;
+  const list = missingSegIndexes();
+  if(!list.length){ segRetryStep = 0; return; }
+  segFetching = true;
+  let got = 0;
+  try{
+    for(const i of list){
+      const a = points[i], b = points[i+1]; if(!a || !b) continue;
+      try{
+        const r = await fetchSegmentGeometry(a, b, segModeOf(i));
+        if(points[i] !== a || points[i+1] !== b) continue;   // 待っている間にポイントが変わった
+        a.segPath = r.geometry.coordinates.map(c=>[+c[1].toFixed(5), +c[0].toFixed(5)]);
+        got++;
+      }catch(e){}
+    }
+  } finally { segFetching = false; }
+  if(got) updatePolyline();   // 取れた分を描く（取れた区間はもう問い合わせない）
+  if(countMissingSegs()) scheduleSegRetry(); else segRetryStep = 0;
+}
+function retrySegsNow(){ segRetryStep = 0; clearTimeout(segRetryTimer); segRetryTimer = null; fetchMissingSegs(); }
 window.addEventListener('online', ()=>{ if(countMissingSegs()) retrySegsNow(); });
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible' && countMissingSegs()) retrySegsNow(); });
+function updateSegWarn(){}   // （前の版の「取り直す」の知らせ。今は画面に出さない）
 
 async function updatePolyline(){
   clearPolylines();
@@ -3438,9 +4439,9 @@ async function updatePolyline(){
   if(token!==polyToken) return;
   segmentDistances = dists;
   renderList();
-  // 取れなかった区間があれば、少し待ってもう一度。全部取れたら、もう一度の数え直しを最初に戻す
-  if(failed > 0) scheduleSegRetry();
-  else { segRetryStep = 0; clearTimeout(segRetryTimer); segRetryTimer = null; updateSegWarn(); }
+  // 取れなかった区間があれば、取れるまで自動で取り直す
+  if(failed > 0){ if(!segRetryTimer) scheduleSegRetry(); }
+  else if(!countMissingSegs()){ segRetryStep = 0; clearTimeout(segRetryTimer); segRetryTimer = null; }
 }
 
 // ===== 再生モード（ルートの線が伸びていく） =====
@@ -5060,6 +6061,19 @@ function authTab(tab){
   document.getElementById('auth-error').style.display='none';
   document.getElementById('username-row').style.display = tab==='signup'?'block':'none';
   document.getElementById('forgot-password-link').style.display = tab==='login'?'block':'none';
+  // ブラウザ（Chrome など）のパスワードの自動入力：
+  // ・ログイン：保存したメールアドレスとパスワードを入れてよい（便利な機能なので残す）
+  // ・新規登録：保存したものを入れさせない（「新しいパスワード」の欄、ユーザー名は「ニックネーム」の欄として知らせる）
+  const un = document.getElementById('auth-username'), em = document.getElementById('auth-email'), pw = document.getElementById('auth-password');
+  if(tab === 'signup'){
+    un.setAttribute('autocomplete', 'nickname'); un.setAttribute('name', 'nickname');
+    em.setAttribute('autocomplete', 'email');
+    pw.setAttribute('autocomplete', 'new-password'); pw.setAttribute('name', 'new-password');
+    un.value = ''; em.value = ''; pw.value = '';   // 自動入力で入ったものを消す
+  } else {
+    em.setAttribute('autocomplete', 'username email');
+    pw.setAttribute('autocomplete', 'current-password'); pw.setAttribute('name', 'password');
+  }
 }
 
 async function authSubmit(){
@@ -8210,33 +9224,7 @@ function showRewardedAd(){
 }
 
 // バナーの高さぶん、地図を下げる（ステータスバーの下にバナーが入る）
-// 【確認用・一時的】Android アプリの黒いすき間の原因を測る：画面の余白の値・広告の高さ・画面の高さを左下に出す
-let adBannerHeightDbg = 0;
-(function(){
-  if(!isNativeApp()) return;
-  const probe = (prop, val) => { const d = document.createElement('div'); d.style.cssText = `position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;${prop}:${val};`; document.body.appendChild(d); return d; };
-  const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;left:4px;bottom:4px;z-index:99999;background:rgba(0,0,0,0.8);color:#7fffd4;font:10px/1.35 monospace;padding:3px 6px;border-radius:6px;pointer-events:none;white-space:pre;';
-  let pEnvTop, pEnvBot, pVarTop, pVarBot;
-  const run = () => {
-    if(!document.body) return;
-    if(!pEnvTop){
-      pEnvTop = probe('height', 'env(safe-area-inset-top)'); pEnvBot = probe('height', 'env(safe-area-inset-bottom)');
-      pVarTop = probe('height', 'var(--safe-area-inset-top,0px)'); pVarBot = probe('height', 'var(--safe-area-inset-bottom,0px)');
-      document.body.appendChild(box);
-    }
-    const ad = getComputedStyle(document.documentElement).getPropertyValue('--ad-shift').trim();
-    const vv = window.visualViewport;
-    box.textContent =
-      `env top ${pEnvTop.offsetHeight} / bottom ${pEnvBot.offsetHeight}\n` +
-      `--safe-area top ${pVarTop.offsetHeight} / bottom ${pVarBot.offsetHeight}\n` +
-      `ad ${adBannerHeightDbg} / --ad-shift ${ad || '-'} / margin ${bannerMargin()}\n` +
-      `inset-mode ${androidInsetMode} / --sat ${getComputedStyle(document.documentElement).getPropertyValue('--sat').trim() || '-'}\n` +
-      `inner ${innerWidth}x${innerHeight} vv ${vv ? Math.round(vv.width) + 'x' + Math.round(vv.height) : '-'}\n` +
-      `screen ${screen.width}x${screen.height} dpr ${devicePixelRatio}`;
-  };
-  setInterval(run, 1000);
-})();
+let adBannerHeightDbg = 0;   // 広告の高さ（前は確認用の表示に使っていた）
 
 // ===== Android アプリの画面の余白 =====
 // Pixel などでは、アプリの画面がすでにステータスバー・ナビゲーションバーの内側に置かれているのに、
