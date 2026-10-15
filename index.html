@@ -1780,11 +1780,14 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
       <h3 style="font-size:14px;color:#ff9f1c;" data-i18n="follow_title">フォロー</h3>
       <button onclick="closeFollowDialog()" style="background:none;border:none;color:#6a6a76;font-size:20px;cursor:pointer;">✕</button>
     </div>
-    <div style="display:flex;gap:6px;margin-bottom:12px;">
+    <div id="follow-tabs" style="display:flex;gap:6px;margin-bottom:12px;">
       <button class="follow-tab" id="ftab-search" onclick="setFollowTab('search')" data-i18n="follow_tab_search">検索</button>
       <button class="follow-tab" id="ftab-following" onclick="setFollowTab('following')" data-i18n="follow_tab_following">フォロー中</button>
       <button class="follow-tab" id="ftab-followers" onclick="setFollowTab('followers')" data-i18n="follow_tab_followers">フォロワー</button>
       <button class="follow-tab" id="ftab-requests" onclick="setFollowTab('requests')"></button>
+    </div>
+    <div id="follow-sort-row" style="display:none;margin-bottom:8px;">
+      <select id="follow-sort" class="dlg-select" style="margin:0;padding:6px 8px;font-size:12px;" onchange="setFollowSort(this.value)"></select>
     </div>
     <div id="follow-search-row" style="display:flex;gap:6px;margin-bottom:10px;">
       <input type="search" id="follow-search-input" autocomplete="off" data-i18n-placeholder="follow_search_placeholder" placeholder="ユーザー名で検索"
@@ -1840,7 +1843,7 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
     <div style="display:flex;gap:6px;margin-bottom:10px;">
       <button class="follow-tab" id="tab-mine" onclick="loadRouteListTab('mine')" data-i18n="tab_routes">ルート</button>
       <button class="follow-tab" id="tab-points" onclick="loadRouteListTab('points')" data-i18n="tab_points">固定ポイント</button>
-      <button class="follow-tab" id="tab-public" onclick="loadRouteListTab('public')" data-i18n="tab_everyone">みんな</button>
+      <button class="follow-tab" id="tab-public" onclick="loadRouteListTab('public')" data-i18n="tab_everyone" style="display:none;">みんな</button>
     </div>
     <div id="mylist-toolbar" style="display:none;margin-bottom:8px;">
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
@@ -1971,6 +1974,7 @@ const SUPPORTED_LANGS = ['ja','en','zh-CN','zh-TW','ko','es','fr','th','vi','de'
 const translations = {
 ja: {
   gps_waiting:'📡 GPS待機中', gps_error:'📡 GPS失敗', gps_accuracy:'📡 精度 ±{m}m',
+  follow_sort_total:"いいねが多い順（合計）", follow_sort_routes:"ルートのいいねが多い順", follow_sort_points:"固定ポイントのいいねが多い順", follow_sort_updated:"更新が新しい順", follow_sort_name:"名前順", user_stats:"ルート {r} · 固定ポイント {p} · ❤️ {l}", nav_resumed:"{n}番から再開しました", nav_from_start:"最初から", nav_set_next_confirm:"{n}番を次のポイントにしますか？",
   style_marks_label:"文字とマーク", style_label_all:"全部表示", style_label_names:"地名・道路名・駅名だけ", style_label_none:"全部消す",
   gps_fix_ios_other:"【iPhone（{app}）】\n1. 設定 → プライバシーとセキュリティ → 位置情報サービス をオン\n2. 同じ画面の一覧から「{app}」→「使用中のみ」\n3. {app} で、このページを読み込み直す",
   err_email_registered:"登録済みのメールアドレスです。", seg_warn_text:"道の線が取れていない区間：{n}", seg_warn_retry:"取り直す",
@@ -2032,6 +2036,7 @@ ja: {
 },
 en: {
   gps_waiting:'📡 Waiting for GPS', gps_error:'📡 GPS failed', gps_accuracy:'📡 Accuracy ±{m}m',
+  follow_sort_total:"Most likes (total)", follow_sort_routes:"Most route likes", follow_sort_points:"Most fixed-point likes", follow_sort_updated:"Recently updated", follow_sort_name:"Name", user_stats:"Routes {r} · Points {p} · ❤️ {l}", nav_resumed:"Resumed from #{n}", nav_from_start:"From the start", nav_set_next_confirm:"Make #{n} the next point?",
   style_marks_label:"Labels & icons", style_label_all:"Show all", style_label_names:"Place, road & station names only", style_label_none:"Hide all",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Settings → Privacy & Security → turn on Location Services\n2. In the list on the same screen: \"{app}\" → \"While Using the App\"\n3. Reload this page in {app}",
   err_email_registered:"This email address is already registered.", seg_warn_text:"Segments without a road line: {n}", seg_warn_retry:"Retry",
@@ -2093,6 +2098,7 @@ en: {
 },
 'zh-CN': {
   gps_waiting:'📡 等待GPS', gps_error:'📡 GPS失败', gps_accuracy:'📡 精度 ±{m}米',
+  follow_sort_total:"点赞最多（合计）", follow_sort_routes:"路线点赞最多", follow_sort_points:"固定点点赞最多", follow_sort_updated:"最近更新", follow_sort_name:"按名称", user_stats:"路线 {r} · 固定点 {p} · ❤️ {l}", nav_resumed:"已从第{n}个继续", nav_from_start:"从头开始", nav_set_next_confirm:"将第{n}个设为下一个点吗？",
   style_marks_label:"文字与图标", style_label_all:"全部显示", style_label_names:"仅地名・道路名・车站名", style_label_none:"全部隐藏",
   gps_fix_ios_other:"【iPhone（{app}）】\n1. 设置 → 隐私与安全性 → 打开定位服务\n2. 在同一页面的列表中：「{app}」→「使用App期间」\n3. 在{app}中重新加载此页面",
   err_email_registered:"该邮箱已注册。", seg_warn_text:"未获取道路线的路段：{n}", seg_warn_retry:"重新获取",
@@ -2154,6 +2160,7 @@ en: {
 },
 'zh-TW': {
   gps_waiting:'📡 等待GPS', gps_error:'📡 GPS失敗', gps_accuracy:'📡 精度 ±{m}公尺',
+  follow_sort_total:"按讚最多（合計）", follow_sort_routes:"路線按讚最多", follow_sort_points:"固定點按讚最多", follow_sort_updated:"最近更新", follow_sort_name:"依名稱", user_stats:"路線 {r} · 固定點 {p} · ❤️ {l}", nav_resumed:"已從第{n}個繼續", nav_from_start:"從頭開始", nav_set_next_confirm:"要將第{n}個設為下一個點嗎？",
   style_marks_label:"文字與圖示", style_label_all:"全部顯示", style_label_names:"僅地名・道路名・車站名", style_label_none:"全部隱藏",
   gps_fix_ios_other:"【iPhone（{app}）】\n1. 設定 → 隱私權與安全性 → 開啟定位服務\n2. 在同一頁面的列表中：「{app}」→「使用App期間」\n3. 在{app}中重新載入此頁面",
   err_email_registered:"此電子郵件已註冊。", seg_warn_text:"未取得道路線的路段：{n}", seg_warn_retry:"重新取得",
@@ -2215,6 +2222,7 @@ en: {
 },
 ko: {
   gps_waiting:'📡 GPS 대기 중', gps_error:'📡 GPS 실패', gps_accuracy:'📡 정확도 ±{m}m',
+  follow_sort_total:"좋아요 많은 순(합계)", follow_sort_routes:"루트 좋아요 많은 순", follow_sort_points:"고정 포인트 좋아요 많은 순", follow_sort_updated:"최근 업데이트 순", follow_sort_name:"이름순", user_stats:"루트 {r} · 고정 포인트 {p} · ❤️ {l}", nav_resumed:"{n}번부터 재개했습니다", nav_from_start:"처음부터", nav_set_next_confirm:"{n}번을 다음 포인트로 할까요?",
   style_marks_label:"글자와 아이콘", style_label_all:"모두 표시", style_label_names:"지명・도로명・역명만", style_label_none:"모두 숨기기",
   gps_fix_ios_other:"[iPhone ({app})]\n1. 설정 → 개인정보 보호 및 보안 → 위치 서비스 켜기\n2. 같은 화면의 목록에서 「{app}」→「앱을 사용하는 동안」\n3. {app}에서 이 페이지 새로고침",
   err_email_registered:"이미 등록된 이메일 주소입니다.", seg_warn_text:"도로 선을 못 가져온 구간: {n}", seg_warn_retry:"다시 가져오기",
@@ -2276,6 +2284,7 @@ ko: {
 },
 es: {
   gps_waiting:'📡 Esperando GPS', gps_error:'📡 Error de GPS', gps_accuracy:'📡 Precisión ±{m}m',
+  follow_sort_total:"Más me gusta (total)", follow_sort_routes:"Más me gusta en rutas", follow_sort_points:"Más me gusta en puntos", follow_sort_updated:"Actualizados recientemente", follow_sort_name:"Nombre", user_stats:"Rutas {r} · Puntos {p} · ❤️ {l}", nav_resumed:"Reanudado desde el n.º {n}", nav_from_start:"Desde el inicio", nav_set_next_confirm:"¿Hacer del n.º {n} el siguiente punto?",
   style_marks_label:"Textos e iconos", style_label_all:"Mostrar todo", style_label_names:"Solo lugares, calles y estaciones", style_label_none:"Ocultar todo",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Ajustes → Privacidad y seguridad → activa Localización\n2. En la lista de la misma pantalla: «{app}» → «Cuando se use la app»\n3. Recarga esta página en {app}",
   err_email_registered:"Este correo ya está registrado.", seg_warn_text:"Tramos sin línea de calle: {n}", seg_warn_retry:"Reintentar",
@@ -2337,6 +2346,7 @@ es: {
 },
 fr: {
   gps_waiting:'📡 En attente du GPS', gps_error:'📡 Échec du GPS', gps_accuracy:'📡 Précision ±{m}m',
+  follow_sort_total:"Plus de j’aime (total)", follow_sort_routes:"Plus de j’aime (itinéraires)", follow_sort_points:"Plus de j’aime (points)", follow_sort_updated:"Mis à jour récemment", follow_sort_name:"Nom", user_stats:"Itinéraires {r} · Points {p} · ❤️ {l}", nav_resumed:"Reprise au n° {n}", nav_from_start:"Depuis le début", nav_set_next_confirm:"Faire du n° {n} le prochain point ?",
   style_marks_label:"Textes et icônes", style_label_all:"Tout afficher", style_label_names:"Lieux, routes et gares seulement", style_label_none:"Tout masquer",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Réglages → Confidentialité et sécurité → activez Service de localisation\n2. Dans la liste du même écran : « {app} » → « Lorsque l’app est active »\n3. Rechargez cette page dans {app}",
   err_email_registered:"Cette adresse e-mail est déjà enregistrée.", seg_warn_text:"Tronçons sans tracé routier : {n}", seg_warn_retry:"Réessayer",
@@ -2398,6 +2408,7 @@ fr: {
 },
 th: {
   gps_waiting:'📡 กำลังรอ GPS', gps_error:'📡 GPS ล้มเหลว', gps_accuracy:'📡 ความแม่นยำ ±{m}ม.',
+  follow_sort_total:"ถูกใจมากที่สุด (รวม)", follow_sort_routes:"เส้นทางที่ถูกใจมากที่สุด", follow_sort_points:"จุดถาวรที่ถูกใจมากที่สุด", follow_sort_updated:"อัปเดตล่าสุด", follow_sort_name:"ชื่อ", user_stats:"เส้นทาง {r} · จุดถาวร {p} · ❤️ {l}", nav_resumed:"เริ่มต่อจากจุดที่ {n}", nav_from_start:"เริ่มใหม่", nav_set_next_confirm:"ตั้งจุดที่ {n} เป็นจุดถัดไปหรือไม่?",
   style_marks_label:"ข้อความและไอคอน", style_label_all:"แสดงทั้งหมด", style_label_names:"เฉพาะชื่อสถานที่ ถนน และสถานี", style_label_none:"ซ่อนทั้งหมด",
   gps_fix_ios_other:"[iPhone ({app})]\n1. การตั้งค่า → ความเป็นส่วนตัวและความปลอดภัย → เปิดบริการหาตำแหน่ง\n2. ในรายการหน้าเดียวกัน: «{app}» → «ขณะใช้แอป»\n3. โหลดหน้านี้ใหม่ใน {app}",
   err_email_registered:"อีเมลนี้ลงทะเบียนแล้ว", seg_warn_text:"ช่วงที่ยังไม่ได้เส้นถนน: {n}", seg_warn_retry:"ลองใหม่",
@@ -2459,6 +2470,7 @@ th: {
 },
 de: {
   gps_waiting:'📡 Warte auf GPS', gps_error:'📡 GPS-Fehler', gps_accuracy:'📡 Genauigkeit ±{m}m',
+  follow_sort_total:"Meiste Likes (gesamt)", follow_sort_routes:"Meiste Routen-Likes", follow_sort_points:"Meiste Punkt-Likes", follow_sort_updated:"Zuletzt aktualisiert", follow_sort_name:"Name", user_stats:"Routen {r} · Punkte {p} · ❤️ {l}", nav_resumed:"Fortgesetzt ab Nr. {n}", nav_from_start:"Von vorne", nav_set_next_confirm:"Nr. {n} als nächsten Punkt setzen?",
   style_marks_label:"Beschriftungen & Symbole", style_label_all:"Alles anzeigen", style_label_names:"Nur Orte, Straßen und Bahnhöfe", style_label_none:"Alles ausblenden",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Einstellungen → Datenschutz & Sicherheit → Ortungsdienste einschalten\n2. In der Liste im selben Bildschirm: „{app}“ → „Beim Verwenden der App“\n3. Diese Seite in {app} neu laden",
   err_email_registered:"Diese E-Mail-Adresse ist bereits registriert.", seg_warn_text:"Abschnitte ohne Straßenlinie: {n}", seg_warn_retry:"Erneut laden",
@@ -2520,6 +2532,7 @@ de: {
 },
 ru: {
   gps_waiting:'📡 Ожидание GPS', gps_error:'📡 Ошибка GPS', gps_accuracy:'📡 Точность ±{m}м',
+  follow_sort_total:"Больше всего лайков (всего)", follow_sort_routes:"Больше лайков у маршрутов", follow_sort_points:"Больше лайков у точек", follow_sort_updated:"Недавно обновлённые", follow_sort_name:"По имени", user_stats:"Маршруты {r} · Точки {p} · ❤️ {l}", nav_resumed:"Продолжено с №{n}", nav_from_start:"С начала", nav_set_next_confirm:"Сделать №{n} следующей точкой?",
   style_marks_label:"Подписи и значки", style_label_all:"Показать всё", style_label_names:"Только места, дороги и станции", style_label_none:"Скрыть всё",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Настройки → Конфиденциальность и безопасность → включите Службы геолокации\n2. В списке на том же экране: «{app}» → «При использовании приложения»\n3. Перезагрузите эту страницу в {app}",
   err_email_registered:"Этот адрес уже зарегистрирован.", seg_warn_text:"Участки без линии дороги: {n}", seg_warn_retry:"Повторить",
@@ -2581,6 +2594,7 @@ ru: {
 },
 pt: {
   gps_waiting:'📡 Aguardando GPS', gps_error:'📡 Falha no GPS', gps_accuracy:'📡 Precisão ±{m}m',
+  follow_sort_total:"Mais curtidas (total)", follow_sort_routes:"Mais curtidas em rotas", follow_sort_points:"Mais curtidas em pontos", follow_sort_updated:"Atualizados recentemente", follow_sort_name:"Nome", user_stats:"Rotas {r} · Pontos {p} · ❤️ {l}", nav_resumed:"Retomado do nº {n}", nav_from_start:"Do início", nav_set_next_confirm:"Tornar o nº {n} o próximo ponto?",
   style_marks_label:"Textos e ícones", style_label_all:"Mostrar tudo", style_label_names:"Só lugares, ruas e estações", style_label_none:"Ocultar tudo",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Ajustes → Privacidade e Segurança → ative Serviços de Localização\n2. Na lista da mesma tela: «{app}» → «Durante o Uso do App»\n3. Recarregue esta página no {app}",
   err_email_registered:"Este e-mail já está cadastrado.", seg_warn_text:"Trechos sem linha de rua: {n}", seg_warn_retry:"Tentar de novo",
@@ -2642,6 +2656,7 @@ pt: {
 },
 ar: {
   gps_waiting:'📡 في انتظار GPS', gps_error:'📡 فشل GPS', gps_accuracy:'📡 الدقة ±{m} م',
+  follow_sort_total:"الأكثر إعجابًا (الإجمالي)", follow_sort_routes:"الأكثر إعجابًا في المسارات", follow_sort_points:"الأكثر إعجابًا في النقاط", follow_sort_updated:"المحدّثة مؤخرًا", follow_sort_name:"الاسم", user_stats:"مسارات {r} · نقاط {p} · ❤️ {l}", nav_resumed:"تم الاستئناف من رقم {n}", nav_from_start:"من البداية", nav_set_next_confirm:"هل تجعل رقم {n} النقطة التالية؟",
   style_marks_label:"النصوص والرموز", style_label_all:"إظهار الكل", style_label_names:"أسماء الأماكن والطرق والمحطات فقط", style_label_none:"إخفاء الكل",
   gps_fix_ios_other:"[iPhone ({app})]\n1. الإعدادات ← الخصوصية والأمن ← شغّل خدمات الموقع\n2. من القائمة في الشاشة نفسها: «{app}» ← «أثناء استخدام التطبيق»\n3. أعد تحميل هذه الصفحة في {app}",
   err_email_registered:"هذا البريد الإلكتروني مسجّل بالفعل.", seg_warn_text:"مقاطع بلا خط طريق: {n}", seg_warn_retry:"إعادة المحاولة",
@@ -2703,6 +2718,7 @@ ar: {
 },
 it: {
   gps_waiting:'📡 In attesa del GPS', gps_error:'📡 GPS non riuscito', gps_accuracy:'📡 Precisione ±{m}m',
+  follow_sort_total:"Più mi piace (totale)", follow_sort_routes:"Più mi piace ai percorsi", follow_sort_points:"Più mi piace ai punti", follow_sort_updated:"Aggiornati di recente", follow_sort_name:"Nome", user_stats:"Percorsi {r} · Punti {p} · ❤️ {l}", nav_resumed:"Ripreso dal n. {n}", nav_from_start:"Dall’inizio", nav_set_next_confirm:"Rendere il n. {n} il prossimo punto?",
   style_marks_label:"Testi e icone", style_label_all:"Mostra tutto", style_label_names:"Solo luoghi, strade e stazioni", style_label_none:"Nascondi tutto",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Impostazioni → Privacy e sicurezza → attiva Localizzazione\n2. Nell’elenco della stessa schermata: «{app}» → «Mentre usi l’app»\n3. Ricarica questa pagina in {app}",
   err_email_registered:"Questa email è già registrata.", seg_warn_text:"Tratti senza linea stradale: {n}", seg_warn_retry:"Riprova",
@@ -2764,6 +2780,7 @@ it: {
 },
 id: {
   gps_waiting:'📡 Menunggu GPS', gps_error:'📡 GPS gagal', gps_accuracy:'📡 Akurasi ±{m}m',
+  follow_sort_total:"Suka terbanyak (total)", follow_sort_routes:"Suka rute terbanyak", follow_sort_points:"Suka titik terbanyak", follow_sort_updated:"Terbaru diperbarui", follow_sort_name:"Nama", user_stats:"Rute {r} · Titik {p} · ❤️ {l}", nav_resumed:"Dilanjutkan dari no. {n}", nav_from_start:"Dari awal", nav_set_next_confirm:"Jadikan no. {n} titik berikutnya?",
   style_marks_label:"Teks & ikon", style_label_all:"Tampilkan semua", style_label_names:"Hanya nama tempat, jalan & stasiun", style_label_none:"Sembunyikan semua",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Pengaturan → Privasi & Keamanan → nyalakan Layanan Lokasi\n2. Di daftar pada layar yang sama: «{app}» → «Saat Menggunakan App»\n3. Muat ulang halaman ini di {app}",
   err_email_registered:"Email ini sudah terdaftar.", seg_warn_text:"Ruas tanpa garis jalan: {n}", seg_warn_retry:"Coba lagi",
@@ -2825,6 +2842,7 @@ id: {
 },
 vi: {
   gps_waiting:'📡 Đang chờ GPS', gps_error:'📡 GPS lỗi', gps_accuracy:'📡 Độ chính xác ±{m}m',
+  follow_sort_total:"Nhiều lượt thích nhất (tổng)", follow_sort_routes:"Tuyến được thích nhiều nhất", follow_sort_points:"Điểm được thích nhiều nhất", follow_sort_updated:"Cập nhật gần đây", follow_sort_name:"Tên", user_stats:"Tuyến {r} · Điểm {p} · ❤️ {l}", nav_resumed:"Tiếp tục từ số {n}", nav_from_start:"Từ đầu", nav_set_next_confirm:"Đặt số {n} làm điểm tiếp theo?",
   style_marks_label:"Chữ và biểu tượng", style_label_all:"Hiện tất cả", style_label_names:"Chỉ tên địa danh, đường và ga", style_label_none:"Ẩn tất cả",
   gps_fix_ios_other:"[iPhone ({app})]\n1. Cài đặt → Quyền riêng tư & Bảo mật → bật Dịch vụ định vị\n2. Trong danh sách cùng màn hình: «{app}» → «Khi dùng ứng dụng»\n3. Tải lại trang này trong {app}",
   err_email_registered:"Email này đã được đăng ký.", seg_warn_text:"Đoạn chưa có đường đi: {n}", seg_warn_retry:"Thử lại",
@@ -4227,6 +4245,7 @@ function addMarker(p,idx){
 // ・編集中でない：地図のポイントを押した時は名前とメモの吹き出しを出す（パネルを閉じていたら閉じたまま）
 function selectRoutePoint(p, from){
   const i = points.indexOf(p); if(i < 0) return;
+  if(navActive && from === 'list' && i !== navIndex){ if(askSetNavIndex(i)) return; }
   followMode = false;
   document.getElementById('follow-btn').classList.remove('active');
   panToVisible([p.lat, p.lng]);              // 倍率はそのまま、見えている部分の真ん中へ
@@ -5515,7 +5534,16 @@ function startNav(){
   setTimeout(refreshAdVisibility, 0);
   if(!points.length){alert(t('alert_no_points'));return;}
   if(countMissingSegs()) retrySegsNow();   // 道の線が取れていない区間があれば、先に取りに行く
-  navActive=true;navIndex=0;
+  navActive=true;
+  // 続きから：覚えている進み具合 → なければ GPS で今いる場所から → それもなければ①から
+  navIndex = loadNavProgress();
+  navAutoPending = false;
+  let resumedFrom = navIndex;
+  if(!navIndex){
+    if(gpsMarker){ const ll = gpsMarker.getLatLng(); navIndex = guessNextIndex(ll.lat, ll.lng); resumedFrom = navIndex; }
+    else navAutoPending = true;   // GPS が取れたら決める
+  }
+  if(resumedFrom > 0) setTimeout(()=>showNavResumed(resumedFrom + 1), 300);
   requestWakeLock().then(ok=>{
     if(!ok) console.warn('この端末・ブラウザでは画面のスリープを止められません');
   });
@@ -5524,8 +5552,8 @@ function startNav(){
   document.getElementById('nav-bar').classList.add('show');
   followMode=true;document.getElementById('follow-btn').classList.add('active');
   refreshAllMarkers();renderList();updateNavBar();
-  const p=points[0];
-  speak(t('nav_start_speak',{name:p.name||t('nav_point_default',{n:1}),memo:p.memo||''}));
+  const p=points[navIndex];
+  speak(t('nav_start_speak',{name:p.name||t('nav_point_default',{n:navIndex+1}),memo:p.memo||''}));
   // 開始直後に距離を即表示（GPS更新を待たずに）
   if(gpsMarker){
     const ll=gpsMarker.getLatLng();
@@ -5536,6 +5564,85 @@ function startNav(){
     document.getElementById('nav-dist-goal').textContent=t('dist_remaining',{dist:formatDist(totalRem)});
   }
 }
+// ===== ナビの続きから =====
+// ・ナビ中にポイントに着くたび「どこまで進んだか」を端末に保存（ルートの形ごと。24時間）
+// ・同じルートでナビを始めると、覚えている所から再開。前のポイントは灰色（通過済み）
+// ・覚えていない時は、GPS で今いる場所に一番近い「区間」を探し、その先のポイントを次にする（ルートから1km以上離れていたら①から）
+// ・ナビ中にルートリストの番号を押すと「ここを次のポイントにする」
+const NAV_PROGRESS_KEY = 'navi_nav_progress', NAV_PROGRESS_TTL = 24*3600*1000, NAV_NEAR_LIMIT = 1000;
+let navAutoPending = false;
+function routeSignature(){ return points.map(p=>`${(+p.lat).toFixed(5)},${(+p.lng).toFixed(5)}`).join('|'); }
+function saveNavProgress(){
+  try{ localStorage.setItem(NAV_PROGRESS_KEY, JSON.stringify({ sig: routeSignature(), index: navIndex, at: Date.now() })); }catch(e){}
+}
+function loadNavProgress(){
+  try{
+    const o = JSON.parse(localStorage.getItem(NAV_PROGRESS_KEY) || 'null');
+    if(o && o.sig === routeSignature() && Date.now() - o.at < NAV_PROGRESS_TTL && o.index > 0 && o.index < points.length) return o.index;
+  }catch(e){}
+  return 0;
+}
+// 点から線分までの距離（m）。短い距離なので平面として計算
+function distToSegM(lat, lng, a, b){
+  const k = 111320, cl = Math.cos(lat * Math.PI / 180);
+  const ax = (a[1]-lng)*k*cl, ay = (a[0]-lat)*k, bx = (b[1]-lng)*k*cl, by = (b[0]-lat)*k;
+  const dx = bx-ax, dy = by-ay, L2 = dx*dx + dy*dy;
+  let tt = L2 ? -(ax*dx + ay*dy) / L2 : 0; tt = Math.max(0, Math.min(1, tt));
+  const px = ax + tt*dx, py = ay + tt*dy;
+  return Math.sqrt(px*px + py*py);
+}
+// 今いる場所から「次のポイント」を決める（一番近い区間の、先のポイント）
+function guessNextIndex(lat, lng){
+  if(points.length < 2) return 0;
+  let best = -1, bestD = Infinity;
+  for(let i=0;i<points.length-1;i++){
+    const a = points[i], b = points[i+1];
+    const path = (a.segPath && a.segPath.length > 1) ? a.segPath : [[a.lat,a.lng],[b.lat,b.lng]];
+    for(let j=0;j<path.length-1;j++){
+      const d = distToSegM(lat, lng, path[j], path[j+1]);
+      if(d < bestD - 1){ bestD = d; best = i; }   // 同じくらいなら前の区間（往復のルートでは行きの方）
+    }
+  }
+  if(best < 0 || bestD > NAV_NEAR_LIMIT) return 0;
+  return best + 1;
+}
+function setNavIndex(i, quiet){
+  navIndex = Math.max(0, Math.min(points.length - 1, i));
+  saveNavProgress();
+  refreshAllMarkers(); renderList(); updateNavBar();
+  if(!quiet){ const p = points[navIndex]; speak(t('next_point_speak',{ name: p.name || t('nav_point_default',{n:navIndex+1}), memo: p.memo || '' }), true); }
+}
+function showNavResumed(n){
+  let el = document.getElementById('nav-resume-toast');
+  if(!el){
+    el = document.createElement('div'); el.id = 'nav-resume-toast';
+    el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--panel-h,0px) + var(--edge-h,0px) + 90px);z-index:1600;display:flex;align-items:center;gap:10px;background:rgba(18,20,26,0.95);border:1px solid #ff9f1c;color:#e9e9ee;border-radius:20px;padding:6px 6px 6px 14px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,0.5);';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<span>${fEsc(t('nav_resumed',{n}))}</span><button style="background:#ff9f1c;color:#000;border:none;border-radius:14px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;" onclick="navFromStart()">${fEsc(t('nav_from_start'))}</button>`;
+  el.style.display = 'flex';
+  clearTimeout(el._t); el._t = setTimeout(()=>{ el.style.display = 'none'; }, 6000);
+}
+function navFromStart(){
+  const el = document.getElementById('nav-resume-toast'); if(el) el.style.display = 'none';
+  navAutoPending = false;
+  setNavIndex(0);
+}
+// GPS が取れた時（ナビの開始直後で、まだ次のポイントを決めていない時）
+function navAutoFromPosition(lat, lng){
+  if(!navAutoPending || !navActive) return;
+  navAutoPending = false;
+  const i = guessNextIndex(lat, lng);
+  if(i > 0){ setNavIndex(i, true); showNavResumed(i + 1); }
+}
+// ナビ中にルートリストの番号を押した時
+function askSetNavIndex(i){
+  if(!confirm(t('nav_set_next_confirm', { n: i + 1 }))) return false;
+  navAutoPending = false;
+  setNavIndex(i);
+  return true;
+}
+
 function stopNav(){
   releaseWakeLock();
   stopBgGps();
@@ -5558,11 +5665,15 @@ function updateNavBar(){
 }
 function checkProgress(lat,lng){
   if(!navActive||navIndex>=points.length)return;
+  navAutoFromPosition(lat, lng);
   const tgt=points[navIndex];
   if(calcDist(lat,lng,tgt.lat,tgt.lng)<REACH){
     const reachedNo = navIndex + 1;
     speak(t('point_reached_speak',{name:tgt.name||t('nav_point_default',{n:reachedNo})}));
     navIndex++;
+    navAutoPending = false;
+    if(navIndex < points.length) saveNavProgress();
+    else { try{ localStorage.removeItem(NAV_PROGRESS_KEY); }catch(e){} }   // ゴールしたら覚えた進み具合を消す
     const nextP = navIndex < points.length ? points[navIndex] : null;
     announceReach(tgt, reachedNo, nextP, navIndex + 1);
     if(!nextP){speak(t('goal_reached_speak'), true);stopNav();if(!isAppHidden())alert(t('goal_reached_alert'));return;}
@@ -6847,7 +6958,7 @@ async function loadFollows(){
     console.warn('フォロー読み込み失敗', e);
   }
   updateFollowBtn();
-  if(document.getElementById('follow-dialog').style.display==='flex') renderFollowList();
+  if(document.getElementById('follow-dialog').style.display==='flex'){ renderFollowList(); loadUserStatsForList(); }
 }
 
 // 相手との関係：outgoing = 自分→相手、incoming = 相手→自分
@@ -6861,6 +6972,8 @@ function relationWith(uid){
 
 function showFollowDialog(){
   if(!currentUser){ showAuthScreen(); return; }
+  userStats = {}; fpUserId = null;   // 数は開くたびに読み直す
+  document.getElementById('follow-tabs').style.display = 'flex';
   document.getElementById('follow-dialog').style.display='flex';
   loadFollows();
   setFollowTab(pendingRequestCount() ? 'requests' : followTab);
@@ -6872,12 +6985,14 @@ function closeFollowDialog(){
 
 function setFollowTab(tab){
   followTab = tab;
+  fpUserId = null;   // 人のページを閉じて一覧へ
   ['search','following','followers','requests'].forEach(x=>{
     document.getElementById('ftab-'+x).classList.toggle('active', x===tab);
   });
   document.getElementById('follow-search-row').style.display = tab==='search' ? 'flex' : 'none';
   updateFollowBtn();
   renderFollowList();
+  loadUserStatsForList();
   if(tab==='search') setTimeout(()=>document.getElementById('follow-search-input').focus(), 50);
 }
 
@@ -6898,6 +7013,7 @@ async function searchUsers(){
     alert(t('err_network'));
   }
   renderFollowList();
+  loadUserStatsForList();
 }
 
 // 相手に対して「自分がフォローする側」のボタン
@@ -6908,26 +7024,104 @@ function outgoingButton(uid){
   return `<button class="follow-act" onclick="unfollowUser('${uid}',true)">${t('follow_following')}</button>`;
 }
 
+// 人の行：名前を押すと、その人のページ（公開・フォロワーに公開しているルートと固定ポイント）
 function followRow(uid, buttons){
   const name = usernameCache[uid] || '—';
-  return `<div class="follow-row"><div class="follow-name" style="display:flex;align-items:center;gap:6px;">${userAvatarHTML(uid,22)}<span style="overflow:hidden;text-overflow:ellipsis;">${fEsc(name)}</span></div>${buttons}</div>`;
+  const st = userStats[uid];
+  const sub = st ? `<div style="font-size:10px;color:#7e7e8b;margin-top:2px;">${t('user_stats', { r: st.routes, p: st.points, l: st.total })}</div>` : '';
+  return `<div class="follow-row"><div class="follow-name" style="display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="openUserPage('${uid}')">${userAvatarHTML(uid,26)}<div style="min-width:0;"><div style="overflow:hidden;text-overflow:ellipsis;">${fEsc(name)}</div>${sub}</div></div>${buttons}</div>`;
 }
+
+// ===== 人の並び順・人のページ =====
+// 並び順：いいねが多い順（合計・ルート・固定ポイント）、更新が新しい順、名前順。数は「自分が見られるもの」だけで数える
+let followSort = (()=>{ try{ return localStorage.getItem('navi_follow_sort') || 'total'; }catch(e){ return 'total'; } })();
+let userStats = {};      // uid → { routes, points, rl, pl, total, updated }
+let fpUserId = null;     // フォローの画面で開いている人のページ
+function setFollowSort(v){ followSort = v; try{ localStorage.setItem('navi_follow_sort', v); }catch(e){} renderFollowList(); }
+function fillFollowSort(){
+  const sel = document.getElementById('follow-sort'); if(!sel) return;
+  const opts = [['total','follow_sort_total'],['routes','follow_sort_routes'],['points','follow_sort_points'],['updated','follow_sort_updated'],['name','follow_sort_name']];
+  sel.innerHTML = opts.map(([v,k])=>`<option value="${v}">${fEsc(t(k))}</option>`).join('');
+  sel.value = followSort;
+}
+function sortUserIds(ids){
+  const st = id => userStats[id] || { rl:0, pl:0, total:0, updated:'' };
+  const nm = id => (usernameCache[id] || '').toLowerCase();
+  const by = {
+    total:   (a,b)=> st(b).total - st(a).total,
+    routes:  (a,b)=> st(b).rl - st(a).rl,
+    points:  (a,b)=> st(b).pl - st(a).pl,
+    updated: (a,b)=> (st(b).updated || '').localeCompare(st(a).updated || ''),
+    name:    ()=>0
+  }[followSort] || (()=>0);
+  return ids.slice().sort((a,b)=> by(a,b) || nm(a).localeCompare(nm(b)));
+}
+// 一覧に出ている人の数（ルート・固定ポイント・いいね・更新）をまとめて読む
+async function loadUserStatsForList(){
+  if(!currentUser) return;
+  const me = currentUser.id;
+  let ids = [];
+  if(followTab==='search') ids = followSearchResults.map(p=>p.id);
+  else if(followTab==='following') ids = myFollows.filter(f=>f.follower_id===me && f.status==='accepted').map(f=>f.following_id);
+  else if(followTab==='followers') ids = myFollows.filter(f=>f.following_id===me && f.status==='accepted').map(f=>f.follower_id);
+  else ids = myFollows.filter(f=>f.following_id===me && f.status==='pending').map(f=>f.follower_id);
+  ids = ids.filter(id=>!userStats[id]);
+  if(!ids.length) return;
+  const sel = 'user_id,like_count,created_at,updated_at';
+  const get = async tbl => {
+    let r = await supabaseFetch(`/rest/v1/${tbl}?select=${sel}&user_id=in.(${ids.join(',')})&limit=5000`);
+    if(!r.ok) r = await supabaseFetch(`/rest/v1/${tbl}?select=user_id,like_count,created_at&user_id=in.(${ids.join(',')})&limit=5000`);   // 更新日時の列がまだない時
+    return r.ok ? await r.json() : [];
+  };
+  try{
+    const [rs, ps] = await Promise.all([get('routes'), get('saved_points')]);
+    ids.forEach(id=>{ userStats[id] = { routes:0, points:0, rl:0, pl:0, total:0, updated:'' }; });
+    const add = (rows, isRoute)=>rows.forEach(x=>{
+      const o = userStats[x.user_id]; if(!o) return;
+      const lc = x.like_count || 0, up = x.updated_at || x.created_at || '';
+      if(isRoute){ o.routes++; o.rl += lc; } else { o.points++; o.pl += lc; }
+      o.total += lc; if(up > o.updated) o.updated = up;
+    });
+    add(rs, true); add(ps, false);
+  }catch(e){ console.warn('人の数の読み込み失敗', e); }
+  if(document.getElementById('follow-dialog').style.display==='flex' && !fpUserId) renderFollowList();
+}
+// 人のページ（フォローの画面の中）：ルート／固定ポイントの切り替え、フォルダの中身、押すと地図に水色で出る
+async function openUserPage(uid){
+  fpUserId = uid;
+  document.getElementById('follow-sort-row').style.display = 'none';
+  document.getElementById('follow-search-row').style.display = 'none';
+  document.getElementById('follow-tabs').style.display = 'none';
+  await openEvUser(uid);
+}
+function closeUserPage(){
+  fpUserId = null; evUserId = null;
+  document.getElementById('follow-tabs').style.display = 'flex';
+  setFollowTab(followTab);
+}
+function evTargetEl(){ return document.getElementById(fpUserId ? 'follow-list' : 'route-list-items'); }
+function setUserPageKind(k){ evKind = k; if(fpUserId) openEvUser(fpUserId); }
 
 function renderFollowList(){
   const el = document.getElementById('follow-list');
   if(!currentUser){ el.innerHTML=''; return; }
   const me = currentUser.id;
   const empty = msg => `<div style="text-align:center;padding:20px;color:#5e5e6b;font-size:12px;">${msg}</div>`;
+  if(fpUserId){ renderEveryoneTree(); return; }
+  // 並び順（申請のタブ以外）
+  const showSort = followTab !== 'requests' && !(followTab==='search' && !followSearchResults.length);
+  document.getElementById('follow-sort-row').style.display = showSort ? 'block' : 'none';
+  if(showSort) fillFollowSort();
   let html = '';
   if(followTab==='search'){
     const q = document.getElementById('follow-search-input').value.trim();
     if(!q){ el.innerHTML=''; return; }
-    html = followSearchResults.map(p=>followRow(p.id, outgoingButton(p.id))).join('') || empty(t('follow_no_users'));
+    html = sortUserIds(followSearchResults.map(p=>p.id)).map(id=>followRow(id, outgoingButton(id))).join('') || empty(t('follow_no_users'));
   } else if(followTab==='following'){
-    const list = myFollows.filter(f=>f.follower_id===me && f.status==='accepted');
-    html = list.map(f=>followRow(f.following_id, outgoingButton(f.following_id))).join('') || empty(t('follow_empty'));
+    const list = sortUserIds(myFollows.filter(f=>f.follower_id===me && f.status==='accepted').map(f=>f.following_id));
+    html = list.map(id=>followRow(id, outgoingButton(id))).join('') || empty(t('follow_empty'));
   } else if(followTab==='followers'){
-    const list = myFollows.filter(f=>f.following_id===me && f.status==='accepted');
+    const list = sortUserIds(myFollows.filter(f=>f.following_id===me && f.status==='accepted').map(f=>f.follower_id)).map(id=>({ follower_id:id }));
     html = list.map(f=>followRow(f.follower_id,
       outgoingButton(f.follower_id) +
       `<button class="follow-act danger" onclick="removeFollower('${f.follower_id}')">${t('follow_remove')}</button>`
@@ -7240,6 +7434,7 @@ function getFixedMeta(){
 // ===== マイリスト =====
 let currentTab = 'mine';
 function showRouteList(){
+  if(!currentUser){ showAuthScreen(); return; }   // マイリストは自分のものだけ（他の人のものはフォローの画面から）
   document.getElementById('route-list-dialog').style.display = 'flex';
   const logged = !!currentUser;
   document.getElementById('tab-mine').style.display = logged ? '' : 'none';
@@ -7913,6 +8108,7 @@ function refreshLikeViews(){
     if(currentTab==='public'){ if(evUserId) renderEveryoneTree(); }
     else renderMyList();
   }
+  if(fpUserId && document.getElementById('follow-dialog').style.display==='flex') renderEveryoneTree();
   if(previewState) showPreviewBar();
 }
 
@@ -8643,7 +8839,7 @@ async function evSearch(){
 async function openEvUser(uid){
   evUserId = uid;
   evExpanded = new Set();
-  const el = document.getElementById('route-list-items');
+  const el = evTargetEl();
   el.innerHTML = `<div style="text-align:center;padding:20px;color:#5e5e6b;font-size:12px;">${t('loading')}</div>`;
   try{
     const gt = evKind==='route' ? 'route_groups' : 'point_groups';
@@ -8661,7 +8857,7 @@ async function openEvUser(uid){
   renderEveryoneTree();
 }
 
-function evBack(){ evUserId = null; renderEveryone(); }
+function evBack(){ if(fpUserId){ closeUserPage(); return; } evUserId = null; renderEveryone(); }
 
 function evFindGroup(id){ return evData.groups.find(g=>g.id===id) || null; }
 
@@ -8670,9 +8866,21 @@ function evParentOf(g){ return (g.parent_group_id && evFindGroup(g.parent_group_
 function evGroupOfItem(it){ return (it.group_id && evFindGroup(it.group_id)) ? it.group_id : null; }
 
 function renderEveryoneTree(){
-  const el = document.getElementById('route-list-items');
-  let html = `<div class="ml-row"><button class="ml-btn" onclick="evBack()">${t('ev_back')}</button>
+  const el = evTargetEl();
+  let html;
+  if(fpUserId){
+    // フォローの画面の中の人のページ
+    html = `<div class="ml-row"><button class="ml-btn" onclick="evBack()">${t('ev_back')}</button>
+      <div class="ml-name" style="display:flex;align-items:center;gap:8px;">${userAvatarHTML(evUserId,28)}<span style="overflow:hidden;text-overflow:ellipsis;font-weight:700;">${fEsc(usernameCache[evUserId]||'—')}</span></div>
+      ${currentUser && evUserId !== currentUser.id ? outgoingButton(evUserId) : ''}</div>
+      <div style="display:flex;gap:6px;margin:8px 0;">
+        <button class="follow-tab${evKind==='route'?' active':''}" onclick="setUserPageKind('route')">${t('tab_routes')}</button>
+        <button class="follow-tab${evKind==='point'?' active':''}" onclick="setUserPageKind('point')">${t('tab_points')}</button>
+      </div>`;
+  } else {
+    html = `<div class="ml-row"><button class="ml-btn" onclick="evBack()">${t('ev_back')}</button>
     <div class="ml-name" style="display:flex;align-items:center;gap:6px;">${userAvatarHTML(evUserId,22)}<span style="overflow:hidden;text-overflow:ellipsis;">${fEsc(usernameCache[evUserId]||'—')} · ${evKind==='route'?t('tab_routes'):t('tab_points')}</span></div></div>`;
+  }
   const walk = (parentId, depth) => {
     evData.groups.filter(g=>evParentOf(g)===parentId).sort((a,b)=>(a.name||'').localeCompare(b.name||'')).forEach(g=>{
       const open = evExpanded.has(g.id);
@@ -8812,6 +9020,7 @@ async function startPreview(state){
   clearPreviewLayer();
   previewLayer = L.layerGroup().addTo(map);
   closeRouteList();
+  document.getElementById('follow-dialog').style.display = 'none';
   followMode = false;
   document.getElementById('follow-btn').classList.remove('active');
   showPreviewBar();
@@ -8854,6 +9063,13 @@ function cancelPreview(){
 }
 
 function backToEveryoneList(){
+  const owner = (previewState && previewState.ownerId) || evUserId;
+  if(currentUser && owner && owner !== currentUser.id){
+    cancelPreview();
+    document.getElementById('follow-dialog').style.display = 'flex';
+    if(fpUserId === owner) renderEveryoneTree(); else openUserPage(owner);
+    return;
+  }
   document.getElementById('route-list-dialog').style.display = 'flex';
   const logged = !!currentUser;
   document.getElementById('tab-mine').style.display = logged ? '' : 'none';
