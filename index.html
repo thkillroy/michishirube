@@ -1979,6 +1979,7 @@ const SUPPORTED_LANGS = ['ja','en','zh-CN','zh-TW','ko','es','fr','th','vi','de'
 const translations = {
 ja: {
   gps_waiting:'📡 GPS待機中', gps_error:'📡 GPS失敗', gps_accuracy:'📡 精度 ±{m}m',
+  reverse_draft_title:"復路の下書きを作りました", reverse_draft_msg:"ポイントの順番を逆にして、道を引き直しました。\n\n行きの時に、側道・ランプ・インターの出入り口・一方通行などに置いたポイントは、復路では同じ場所を通れないことがあります。その区間は遠回りやUターンの線になり、ルートリストに ⚠ が付きます。\n\n⚠ の区間を確認して、ポイントを動かすか消してから保存してください。", seg_warn_tip:"遠回り・Uターンがあります。行き用の場所に置いたポイントかもしれません", reverse_draft_ok:"わかった",
   no_fixed_points:"固定ポイントがありません",
   report_user:"このユーザーを通報", report_content:"通報", block_user:"ブロック", unblock_user:"ブロックを解除", report_title:"通報する", report_reason_label:"理由", report_r_inappropriate:"不適切な内容", report_r_personal:"個人情報が載っている", report_r_spam:"迷惑行為・宣伝", report_r_impersonation:"なりすまし", report_r_other:"その他", report_detail_ph:"くわしく（なくてもよい）", report_send:"送る", report_sent:"通報を送りました。運営者が確認します", report_already:"すでに通報しています", confirm_block:"{name} さんをブロックしますか？お互いのルート・固定ポイントが見えなくなり、フォローも解除されます", blocked_done:"ブロックしました", blocked_list_title:"ブロック中の人", blocked_none:"ブロック中の人はいません", unblocked_done:"ブロックを解除しました",
   follow_sort_total:"いいねが多い順（合計）", follow_sort_routes:"ルートのいいねが多い順", follow_sort_points:"固定ポイントのいいねが多い順", follow_sort_updated:"更新が新しい順", follow_sort_name:"名前順", user_stats:"ルート {r} · 固定ポイント {p} · ❤️ {l}", nav_resumed:"{n}番から再開しました", nav_from_start:"最初から", nav_set_next_confirm:"{n}番を次のポイントにしますか？",
@@ -2043,6 +2044,7 @@ ja: {
 },
 en: {
   gps_waiting:'📡 Waiting for GPS', gps_error:'📡 GPS failed', gps_accuracy:'📡 Accuracy ±{m}m',
+  reverse_draft_title:"Return route draft created", reverse_draft_msg:"The point order was reversed and the road lines were recalculated.\n\nPoints you placed on side roads, ramps, interchange exits or one-way roads for the outbound trip may not be passable in the same place on the way back. Those segments will show detours or U-turns and get a ⚠ in the route list.\n\nCheck the ⚠ segments, move or delete those points, and then save.", seg_warn_tip:"Detour or U-turn. This point may have been placed for the outbound trip", reverse_draft_ok:"OK",
   no_fixed_points:"No fixed points",
   report_user:"Report this user", report_content:"Report", block_user:"Block", unblock_user:"Unblock", report_title:"Report", report_reason_label:"Reason", report_r_inappropriate:"Inappropriate content", report_r_personal:"Contains personal information", report_r_spam:"Harassment or spam", report_r_impersonation:"Impersonation", report_r_other:"Other", report_detail_ph:"Details (optional)", report_send:"Send", report_sent:"Report sent. We will review it.", report_already:"You have already reported this", confirm_block:"Block {name}? You will no longer see each other’s routes and fixed points, and any follows will be removed.", blocked_done:"Blocked", blocked_list_title:"Blocked users", blocked_none:"No blocked users", unblocked_done:"Unblocked",
   follow_sort_total:"Most likes (total)", follow_sort_routes:"Most route likes", follow_sort_points:"Most fixed-point likes", follow_sort_updated:"Recently updated", follow_sort_name:"Name", user_stats:"Routes {r} · Points {p} · ❤️ {l}", nav_resumed:"Resumed from #{n}", nav_from_start:"From the start", nav_set_next_confirm:"Make #{n} the next point?",
@@ -2107,6 +2109,7 @@ en: {
 },
 'zh-CN': {
   gps_waiting:'📡 等待GPS', gps_error:'📡 GPS失败', gps_accuracy:'📡 精度 ±{m}米',
+  reverse_draft_title:"已创建返程草稿", reverse_draft_msg:"已将点的顺序反转，并重新计算道路线。\n\n去程时放在辅路、匝道、出入口或单行道上的点，返程时可能无法经过同一位置。这些路段会出现绕路或掉头，并在路线列表中显示 ⚠。\n\n请检查 ⚠ 路段，移动或删除这些点后再保存。", seg_warn_tip:"有绕路或掉头。该点可能是为去程放置的", reverse_draft_ok:"知道了",
   no_fixed_points:"没有固定点",
   report_user:"举报此用户", report_content:"举报", block_user:"屏蔽", unblock_user:"取消屏蔽", report_title:"举报", report_reason_label:"原因", report_r_inappropriate:"不当内容", report_r_personal:"包含个人信息", report_r_spam:"骚扰或广告", report_r_impersonation:"冒充他人", report_r_other:"其他", report_detail_ph:"详细说明（可选）", report_send:"发送", report_sent:"已发送举报，我们会进行确认", report_already:"你已经举报过了", confirm_block:"要屏蔽 {name} 吗？双方将看不到彼此的路线和固定点，关注也会解除", blocked_done:"已屏蔽", blocked_list_title:"已屏蔽的用户", blocked_none:"没有已屏蔽的用户", unblocked_done:"已取消屏蔽",
   follow_sort_total:"点赞最多（合计）", follow_sort_routes:"路线点赞最多", follow_sort_points:"固定点点赞最多", follow_sort_updated:"最近更新", follow_sort_name:"按名称", user_stats:"路线 {r} · 固定点 {p} · ❤️ {l}", nav_resumed:"已从第{n}个继续", nav_from_start:"从头开始", nav_set_next_confirm:"将第{n}个设为下一个点吗？",
@@ -2171,6 +2174,7 @@ en: {
 },
 'zh-TW': {
   gps_waiting:'📡 等待GPS', gps_error:'📡 GPS失敗', gps_accuracy:'📡 精度 ±{m}公尺',
+  reverse_draft_title:"已建立回程草稿", reverse_draft_msg:"已將點的順序反轉，並重新計算道路線。\n\n去程時放在側道、匝道、交流道出入口或單行道上的點，回程時可能無法通過同一位置。這些路段會出現繞路或迴轉，並在路線清單中顯示 ⚠。\n\n請檢查 ⚠ 路段，移動或刪除這些點後再儲存。", seg_warn_tip:"有繞路或迴轉。此點可能是為去程放置的", reverse_draft_ok:"知道了",
   no_fixed_points:"沒有固定點",
   report_user:"檢舉此使用者", report_content:"檢舉", block_user:"封鎖", unblock_user:"解除封鎖", report_title:"檢舉", report_reason_label:"原因", report_r_inappropriate:"不當內容", report_r_personal:"包含個人資料", report_r_spam:"騷擾或廣告", report_r_impersonation:"冒充他人", report_r_other:"其他", report_detail_ph:"詳細說明（可不填）", report_send:"送出", report_sent:"已送出檢舉，我們會確認", report_already:"你已經檢舉過了", confirm_block:"要封鎖 {name} 嗎？雙方將看不到彼此的路線和固定點，追蹤也會解除", blocked_done:"已封鎖", blocked_list_title:"封鎖中的使用者", blocked_none:"沒有封鎖中的使用者", unblocked_done:"已解除封鎖",
   follow_sort_total:"按讚最多（合計）", follow_sort_routes:"路線按讚最多", follow_sort_points:"固定點按讚最多", follow_sort_updated:"最近更新", follow_sort_name:"依名稱", user_stats:"路線 {r} · 固定點 {p} · ❤️ {l}", nav_resumed:"已從第{n}個繼續", nav_from_start:"從頭開始", nav_set_next_confirm:"要將第{n}個設為下一個點嗎？",
@@ -2235,6 +2239,7 @@ en: {
 },
 ko: {
   gps_waiting:'📡 GPS 대기 중', gps_error:'📡 GPS 실패', gps_accuracy:'📡 정확도 ±{m}m',
+  reverse_draft_title:"복귀 루트 초안을 만들었습니다", reverse_draft_msg:"포인트 순서를 반대로 하고 도로 선을 다시 그렸습니다.\n\n갈 때 측도·램프·IC 출입구·일방통행 등에 둔 포인트는 돌아올 때 같은 곳을 지나지 못할 수 있습니다. 그 구간은 우회나 유턴 선이 되고 루트 목록에 ⚠ 가 붙습니다.\n\n⚠ 구간을 확인해 포인트를 옮기거나 지운 뒤 저장하세요.", seg_warn_tip:"우회·유턴이 있습니다. 갈 때용 위치에 둔 포인트일 수 있습니다", reverse_draft_ok:"알겠습니다",
   no_fixed_points:"고정 포인트가 없습니다",
   report_user:"이 사용자 신고", report_content:"신고", block_user:"차단", unblock_user:"차단 해제", report_title:"신고하기", report_reason_label:"이유", report_r_inappropriate:"부적절한 내용", report_r_personal:"개인정보가 포함됨", report_r_spam:"괴롭힘·광고", report_r_impersonation:"사칭", report_r_other:"기타", report_detail_ph:"자세히(선택)", report_send:"보내기", report_sent:"신고를 보냈습니다. 운영자가 확인합니다", report_already:"이미 신고했습니다", confirm_block:"{name}님을 차단할까요? 서로의 루트와 고정 포인트가 보이지 않게 되고 팔로우도 해제됩니다", blocked_done:"차단했습니다", blocked_list_title:"차단한 사용자", blocked_none:"차단한 사용자가 없습니다", unblocked_done:"차단을 해제했습니다",
   follow_sort_total:"좋아요 많은 순(합계)", follow_sort_routes:"루트 좋아요 많은 순", follow_sort_points:"고정 포인트 좋아요 많은 순", follow_sort_updated:"최근 업데이트 순", follow_sort_name:"이름순", user_stats:"루트 {r} · 고정 포인트 {p} · ❤️ {l}", nav_resumed:"{n}번부터 재개했습니다", nav_from_start:"처음부터", nav_set_next_confirm:"{n}번을 다음 포인트로 할까요?",
@@ -2299,6 +2304,7 @@ ko: {
 },
 es: {
   gps_waiting:'📡 Esperando GPS', gps_error:'📡 Error de GPS', gps_accuracy:'📡 Precisión ±{m}m',
+  reverse_draft_title:"Borrador de ruta de regreso creado", reverse_draft_msg:"Se invirtió el orden de los puntos y se recalcularon las líneas de calle.\n\nLos puntos que pusiste en vías laterales, rampas, salidas o calles de sentido único para la ida quizá no se puedan pasar en el mismo lugar a la vuelta. Esos tramos mostrarán desvíos o cambios de sentido y llevarán ⚠ en la lista.\n\nRevisa los tramos con ⚠, mueve o borra esos puntos y luego guarda.", seg_warn_tip:"Desvío o cambio de sentido. Este punto quizá se puso para la ida", reverse_draft_ok:"Entendido",
   no_fixed_points:"No hay puntos fijos",
   report_user:"Denunciar a este usuario", report_content:"Denunciar", block_user:"Bloquear", unblock_user:"Desbloquear", report_title:"Denunciar", report_reason_label:"Motivo", report_r_inappropriate:"Contenido inapropiado", report_r_personal:"Contiene datos personales", report_r_spam:"Acoso o spam", report_r_impersonation:"Suplantación", report_r_other:"Otro", report_detail_ph:"Detalles (opcional)", report_send:"Enviar", report_sent:"Denuncia enviada. La revisaremos.", report_already:"Ya lo has denunciado", confirm_block:"¿Bloquear a {name}? Dejaréis de ver las rutas y puntos fijos del otro y se quitarán los seguimientos.", blocked_done:"Bloqueado", blocked_list_title:"Usuarios bloqueados", blocked_none:"No hay usuarios bloqueados", unblocked_done:"Desbloqueado",
   follow_sort_total:"Más me gusta (total)", follow_sort_routes:"Más me gusta en rutas", follow_sort_points:"Más me gusta en puntos", follow_sort_updated:"Actualizados recientemente", follow_sort_name:"Nombre", user_stats:"Rutas {r} · Puntos {p} · ❤️ {l}", nav_resumed:"Reanudado desde el n.º {n}", nav_from_start:"Desde el inicio", nav_set_next_confirm:"¿Hacer del n.º {n} el siguiente punto?",
@@ -2363,6 +2369,7 @@ es: {
 },
 fr: {
   gps_waiting:'📡 En attente du GPS', gps_error:'📡 Échec du GPS', gps_accuracy:'📡 Précision ±{m}m',
+  reverse_draft_title:"Brouillon du trajet retour créé", reverse_draft_msg:"L’ordre des points a été inversé et les tracés routiers recalculés.\n\nLes points placés à l’aller sur des contre-allées, bretelles, sorties ou sens uniques ne sont peut-être pas praticables au même endroit au retour. Ces tronçons auront des détours ou demi-tours et un ⚠ dans la liste.\n\nVérifiez les tronçons ⚠, déplacez ou supprimez ces points, puis enregistrez.", seg_warn_tip:"Détour ou demi-tour. Ce point a peut-être été placé pour l’aller", reverse_draft_ok:"Compris",
   no_fixed_points:"Aucun point fixe",
   report_user:"Signaler cet utilisateur", report_content:"Signaler", block_user:"Bloquer", unblock_user:"Débloquer", report_title:"Signaler", report_reason_label:"Motif", report_r_inappropriate:"Contenu inapproprié", report_r_personal:"Contient des informations personnelles", report_r_spam:"Harcèlement ou spam", report_r_impersonation:"Usurpation d’identité", report_r_other:"Autre", report_detail_ph:"Détails (facultatif)", report_send:"Envoyer", report_sent:"Signalement envoyé. Nous allons l’examiner.", report_already:"Vous l’avez déjà signalé", confirm_block:"Bloquer {name} ? Vous ne verrez plus les itinéraires et points de l’autre, et les abonnements seront supprimés.", blocked_done:"Bloqué", blocked_list_title:"Utilisateurs bloqués", blocked_none:"Aucun utilisateur bloqué", unblocked_done:"Débloqué",
   follow_sort_total:"Plus de j’aime (total)", follow_sort_routes:"Plus de j’aime (itinéraires)", follow_sort_points:"Plus de j’aime (points)", follow_sort_updated:"Mis à jour récemment", follow_sort_name:"Nom", user_stats:"Itinéraires {r} · Points {p} · ❤️ {l}", nav_resumed:"Reprise au n° {n}", nav_from_start:"Depuis le début", nav_set_next_confirm:"Faire du n° {n} le prochain point ?",
@@ -2427,6 +2434,7 @@ fr: {
 },
 th: {
   gps_waiting:'📡 กำลังรอ GPS', gps_error:'📡 GPS ล้มเหลว', gps_accuracy:'📡 ความแม่นยำ ±{m}ม.',
+  reverse_draft_title:"สร้างฉบับร่างเส้นทางขากลับแล้ว", reverse_draft_msg:"กลับลำดับจุดและคำนวณเส้นถนนใหม่แล้ว\n\nจุดที่วางไว้บนถนนข้าง ทางลาด ทางเข้าออก หรือถนนเดินรถทางเดียวสำหรับขาไป อาจผ่านจุดเดิมไม่ได้ในขากลับ ช่วงเหล่านั้นจะมีทางอ้อมหรือการกลับรถ และมี ⚠ ในรายการ\n\nโปรดตรวจช่วงที่มี ⚠ ย้ายหรือลบจุดเหล่านั้นแล้วจึงบันทึก", seg_warn_tip:"มีทางอ้อมหรือกลับรถ จุดนี้อาจวางไว้สำหรับขาไป", reverse_draft_ok:"เข้าใจแล้ว",
   no_fixed_points:"ไม่มีจุดถาวร",
   report_user:"รายงานผู้ใช้นี้", report_content:"รายงาน", block_user:"บล็อก", unblock_user:"เลิกบล็อก", report_title:"รายงาน", report_reason_label:"เหตุผล", report_r_inappropriate:"เนื้อหาไม่เหมาะสม", report_r_personal:"มีข้อมูลส่วนตัว", report_r_spam:"การคุกคามหรือสแปม", report_r_impersonation:"การแอบอ้าง", report_r_other:"อื่น ๆ", report_detail_ph:"รายละเอียด (ไม่บังคับ)", report_send:"ส่ง", report_sent:"ส่งรายงานแล้ว ผู้ดูแลจะตรวจสอบ", report_already:"คุณรายงานไปแล้ว", confirm_block:"บล็อก {name} หรือไม่? ทั้งสองฝ่ายจะไม่เห็นเส้นทางและจุดถาวรของกัน และการติดตามจะถูกยกเลิก", blocked_done:"บล็อกแล้ว", blocked_list_title:"ผู้ใช้ที่บล็อก", blocked_none:"ไม่มีผู้ใช้ที่บล็อก", unblocked_done:"เลิกบล็อกแล้ว",
   follow_sort_total:"ถูกใจมากที่สุด (รวม)", follow_sort_routes:"เส้นทางที่ถูกใจมากที่สุด", follow_sort_points:"จุดถาวรที่ถูกใจมากที่สุด", follow_sort_updated:"อัปเดตล่าสุด", follow_sort_name:"ชื่อ", user_stats:"เส้นทาง {r} · จุดถาวร {p} · ❤️ {l}", nav_resumed:"เริ่มต่อจากจุดที่ {n}", nav_from_start:"เริ่มใหม่", nav_set_next_confirm:"ตั้งจุดที่ {n} เป็นจุดถัดไปหรือไม่?",
@@ -2491,6 +2499,7 @@ th: {
 },
 de: {
   gps_waiting:'📡 Warte auf GPS', gps_error:'📡 GPS-Fehler', gps_accuracy:'📡 Genauigkeit ±{m}m',
+  reverse_draft_title:"Entwurf für den Rückweg erstellt", reverse_draft_msg:"Die Reihenfolge der Punkte wurde umgedreht und die Straßenlinien neu berechnet.\n\nPunkte, die du für die Hinfahrt auf Nebenstraßen, Rampen, Ausfahrten oder Einbahnstraßen gesetzt hast, sind auf dem Rückweg evtl. nicht an derselben Stelle befahrbar. Diese Abschnitte zeigen Umwege oder Wenden und ein ⚠ in der Liste.\n\nPrüfe die ⚠-Abschnitte, verschiebe oder lösche diese Punkte und speichere dann.", seg_warn_tip:"Umweg oder Wende. Dieser Punkt wurde evtl. für die Hinfahrt gesetzt", reverse_draft_ok:"Verstanden",
   no_fixed_points:"Keine festen Punkte",
   report_user:"Diesen Nutzer melden", report_content:"Melden", block_user:"Blockieren", unblock_user:"Blockierung aufheben", report_title:"Melden", report_reason_label:"Grund", report_r_inappropriate:"Unangemessener Inhalt", report_r_personal:"Enthält persönliche Daten", report_r_spam:"Belästigung oder Spam", report_r_impersonation:"Identitätsdiebstahl", report_r_other:"Sonstiges", report_detail_ph:"Details (optional)", report_send:"Senden", report_sent:"Meldung gesendet. Wir prüfen sie.", report_already:"Bereits gemeldet", confirm_block:"{name} blockieren? Ihr seht die Routen und festen Punkte des anderen nicht mehr, und Follows werden entfernt.", blocked_done:"Blockiert", blocked_list_title:"Blockierte Nutzer", blocked_none:"Keine blockierten Nutzer", unblocked_done:"Blockierung aufgehoben",
   follow_sort_total:"Meiste Likes (gesamt)", follow_sort_routes:"Meiste Routen-Likes", follow_sort_points:"Meiste Punkt-Likes", follow_sort_updated:"Zuletzt aktualisiert", follow_sort_name:"Name", user_stats:"Routen {r} · Punkte {p} · ❤️ {l}", nav_resumed:"Fortgesetzt ab Nr. {n}", nav_from_start:"Von vorne", nav_set_next_confirm:"Nr. {n} als nächsten Punkt setzen?",
@@ -2555,6 +2564,7 @@ de: {
 },
 ru: {
   gps_waiting:'📡 Ожидание GPS', gps_error:'📡 Ошибка GPS', gps_accuracy:'📡 Точность ±{m}м',
+  reverse_draft_title:"Черновик обратного маршрута создан", reverse_draft_msg:"Порядок точек изменён на обратный, линии дорог пересчитаны.\n\nТочки, поставленные для пути туда на дублёрах, съездах, развязках или улицах с односторонним движением, на обратном пути могут быть недоступны в том же месте. На таких участках будут объезды или развороты и значок ⚠ в списке.\n\nПроверьте участки с ⚠, переместите или удалите эти точки и сохраните.", seg_warn_tip:"Объезд или разворот. Возможно, точка поставлена для пути туда", reverse_draft_ok:"Понятно",
   no_fixed_points:"Нет постоянных точек",
   report_user:"Пожаловаться на пользователя", report_content:"Пожаловаться", block_user:"Заблокировать", unblock_user:"Разблокировать", report_title:"Жалоба", report_reason_label:"Причина", report_r_inappropriate:"Неуместный контент", report_r_personal:"Личные данные", report_r_spam:"Преследование или спам", report_r_impersonation:"Выдача себя за другого", report_r_other:"Другое", report_detail_ph:"Подробности (необязательно)", report_send:"Отправить", report_sent:"Жалоба отправлена. Мы её проверим.", report_already:"Вы уже пожаловались", confirm_block:"Заблокировать {name}? Вы перестанете видеть маршруты и точки друг друга, подписки будут удалены.", blocked_done:"Заблокирован", blocked_list_title:"Заблокированные", blocked_none:"Нет заблокированных", unblocked_done:"Разблокирован",
   follow_sort_total:"Больше всего лайков (всего)", follow_sort_routes:"Больше лайков у маршрутов", follow_sort_points:"Больше лайков у точек", follow_sort_updated:"Недавно обновлённые", follow_sort_name:"По имени", user_stats:"Маршруты {r} · Точки {p} · ❤️ {l}", nav_resumed:"Продолжено с №{n}", nav_from_start:"С начала", nav_set_next_confirm:"Сделать №{n} следующей точкой?",
@@ -2619,6 +2629,7 @@ ru: {
 },
 pt: {
   gps_waiting:'📡 Aguardando GPS', gps_error:'📡 Falha no GPS', gps_accuracy:'📡 Precisão ±{m}m',
+  reverse_draft_title:"Rascunho da rota de volta criado", reverse_draft_msg:"A ordem dos pontos foi invertida e as linhas das ruas recalculadas.\n\nPontos colocados na ida em vias laterais, rampas, saídas ou ruas de mão única podem não ser passáveis no mesmo lugar na volta. Esses trechos terão desvios ou retornos e um ⚠ na lista.\n\nConfira os trechos com ⚠, mova ou apague esses pontos e depois salve.", seg_warn_tip:"Desvio ou retorno. Este ponto talvez tenha sido colocado para a ida", reverse_draft_ok:"Entendi",
   no_fixed_points:"Nenhum ponto fixo",
   report_user:"Denunciar este usuário", report_content:"Denunciar", block_user:"Bloquear", unblock_user:"Desbloquear", report_title:"Denunciar", report_reason_label:"Motivo", report_r_inappropriate:"Conteúdo impróprio", report_r_personal:"Contém dados pessoais", report_r_spam:"Assédio ou spam", report_r_impersonation:"Falsidade ideológica", report_r_other:"Outro", report_detail_ph:"Detalhes (opcional)", report_send:"Enviar", report_sent:"Denúncia enviada. Vamos analisar.", report_already:"Você já denunciou", confirm_block:"Bloquear {name}? Vocês não verão mais as rotas e pontos um do outro, e os seguimentos serão removidos.", blocked_done:"Bloqueado", blocked_list_title:"Usuários bloqueados", blocked_none:"Nenhum usuário bloqueado", unblocked_done:"Desbloqueado",
   follow_sort_total:"Mais curtidas (total)", follow_sort_routes:"Mais curtidas em rotas", follow_sort_points:"Mais curtidas em pontos", follow_sort_updated:"Atualizados recentemente", follow_sort_name:"Nome", user_stats:"Rotas {r} · Pontos {p} · ❤️ {l}", nav_resumed:"Retomado do nº {n}", nav_from_start:"Do início", nav_set_next_confirm:"Tornar o nº {n} o próximo ponto?",
@@ -2683,6 +2694,7 @@ pt: {
 },
 ar: {
   gps_waiting:'📡 في انتظار GPS', gps_error:'📡 فشل GPS', gps_accuracy:'📡 الدقة ±{m} م',
+  reverse_draft_title:"تم إنشاء مسودة طريق العودة", reverse_draft_msg:"تم عكس ترتيب النقاط وإعادة حساب خطوط الطرق.\n\nالنقاط التي وضعتها في الذهاب على طرق جانبية أو منحدرات أو مخارج أو شوارع باتجاه واحد قد لا يمكن المرور بها في المكان نفسه عند العودة. ستظهر في تلك المقاطع التفافات أو دورانات وعلامة ⚠ في القائمة.\n\nتحقق من المقاطع ذات ⚠ وانقل تلك النقاط أو احذفها ثم احفظ.", seg_warn_tip:"التفاف أو دوران. ربما وُضعت هذه النقطة للذهاب", reverse_draft_ok:"حسنًا",
   no_fixed_points:"لا توجد نقاط ثابتة",
   report_user:"الإبلاغ عن هذا المستخدم", report_content:"إبلاغ", block_user:"حظر", unblock_user:"إلغاء الحظر", report_title:"إبلاغ", report_reason_label:"السبب", report_r_inappropriate:"محتوى غير لائق", report_r_personal:"يحتوي على معلومات شخصية", report_r_spam:"مضايقة أو رسائل مزعجة", report_r_impersonation:"انتحال شخصية", report_r_other:"أخرى", report_detail_ph:"تفاصيل (اختياري)", report_send:"إرسال", report_sent:"تم إرسال البلاغ وسنراجعه", report_already:"لقد أبلغت عن هذا من قبل", confirm_block:"حظر {name}؟ لن يرى أي منكما مسارات ونقاط الآخر، وستُلغى المتابعات.", blocked_done:"تم الحظر", blocked_list_title:"المستخدمون المحظورون", blocked_none:"لا يوجد مستخدمون محظورون", unblocked_done:"تم إلغاء الحظر",
   follow_sort_total:"الأكثر إعجابًا (الإجمالي)", follow_sort_routes:"الأكثر إعجابًا في المسارات", follow_sort_points:"الأكثر إعجابًا في النقاط", follow_sort_updated:"المحدّثة مؤخرًا", follow_sort_name:"الاسم", user_stats:"مسارات {r} · نقاط {p} · ❤️ {l}", nav_resumed:"تم الاستئناف من رقم {n}", nav_from_start:"من البداية", nav_set_next_confirm:"هل تجعل رقم {n} النقطة التالية؟",
@@ -2747,6 +2759,7 @@ ar: {
 },
 it: {
   gps_waiting:'📡 In attesa del GPS', gps_error:'📡 GPS non riuscito', gps_accuracy:'📡 Precisione ±{m}m',
+  reverse_draft_title:"Bozza del ritorno creata", reverse_draft_msg:"L’ordine dei punti è stato invertito e le linee stradali ricalcolate.\n\nI punti messi all’andata su complanari, rampe, uscite o sensi unici potrebbero non essere percorribili nello stesso posto al ritorno. Quei tratti mostreranno deviazioni o inversioni e un ⚠ nell’elenco.\n\nControlla i tratti con ⚠, sposta o elimina quei punti e poi salva.", seg_warn_tip:"Deviazione o inversione. Questo punto forse era per l’andata", reverse_draft_ok:"Ho capito",
   no_fixed_points:"Nessun punto fisso",
   report_user:"Segnala questo utente", report_content:"Segnala", block_user:"Blocca", unblock_user:"Sblocca", report_title:"Segnala", report_reason_label:"Motivo", report_r_inappropriate:"Contenuto inappropriato", report_r_personal:"Contiene dati personali", report_r_spam:"Molestie o spam", report_r_impersonation:"Furto d’identità", report_r_other:"Altro", report_detail_ph:"Dettagli (facoltativo)", report_send:"Invia", report_sent:"Segnalazione inviata. La esamineremo.", report_already:"Hai già segnalato", confirm_block:"Bloccare {name}? Non vedrete più percorsi e punti l’uno dell’altro e i follow verranno rimossi.", blocked_done:"Bloccato", blocked_list_title:"Utenti bloccati", blocked_none:"Nessun utente bloccato", unblocked_done:"Sbloccato",
   follow_sort_total:"Più mi piace (totale)", follow_sort_routes:"Più mi piace ai percorsi", follow_sort_points:"Più mi piace ai punti", follow_sort_updated:"Aggiornati di recente", follow_sort_name:"Nome", user_stats:"Percorsi {r} · Punti {p} · ❤️ {l}", nav_resumed:"Ripreso dal n. {n}", nav_from_start:"Dall’inizio", nav_set_next_confirm:"Rendere il n. {n} il prossimo punto?",
@@ -2811,6 +2824,7 @@ it: {
 },
 id: {
   gps_waiting:'📡 Menunggu GPS', gps_error:'📡 GPS gagal', gps_accuracy:'📡 Akurasi ±{m}m',
+  reverse_draft_title:"Draf rute kembali dibuat", reverse_draft_msg:"Urutan titik dibalik dan garis jalan dihitung ulang.\n\nTitik yang diletakkan untuk perjalanan pergi di jalan samping, ramp, pintu tol, atau jalan satu arah mungkin tidak bisa dilewati di tempat yang sama saat kembali. Ruas itu akan memutar atau putar balik dan diberi ⚠ di daftar.\n\nPeriksa ruas ⚠, pindahkan atau hapus titik tersebut, lalu simpan.", seg_warn_tip:"Memutar atau putar balik. Titik ini mungkin untuk perjalanan pergi", reverse_draft_ok:"Mengerti",
   no_fixed_points:"Tidak ada titik tetap",
   report_user:"Laporkan pengguna ini", report_content:"Laporkan", block_user:"Blokir", unblock_user:"Buka blokir", report_title:"Laporkan", report_reason_label:"Alasan", report_r_inappropriate:"Konten tidak pantas", report_r_personal:"Berisi data pribadi", report_r_spam:"Pelecehan atau spam", report_r_impersonation:"Peniruan identitas", report_r_other:"Lainnya", report_detail_ph:"Detail (opsional)", report_send:"Kirim", report_sent:"Laporan terkirim. Kami akan memeriksanya.", report_already:"Anda sudah melaporkannya", confirm_block:"Blokir {name}? Kalian tidak akan saling melihat rute dan titik tetap, dan ikutan akan dihapus.", blocked_done:"Diblokir", blocked_list_title:"Pengguna diblokir", blocked_none:"Tidak ada pengguna diblokir", unblocked_done:"Blokir dibuka",
   follow_sort_total:"Suka terbanyak (total)", follow_sort_routes:"Suka rute terbanyak", follow_sort_points:"Suka titik terbanyak", follow_sort_updated:"Terbaru diperbarui", follow_sort_name:"Nama", user_stats:"Rute {r} · Titik {p} · ❤️ {l}", nav_resumed:"Dilanjutkan dari no. {n}", nav_from_start:"Dari awal", nav_set_next_confirm:"Jadikan no. {n} titik berikutnya?",
@@ -2875,6 +2889,7 @@ id: {
 },
 vi: {
   gps_waiting:'📡 Đang chờ GPS', gps_error:'📡 GPS lỗi', gps_accuracy:'📡 Độ chính xác ±{m}m',
+  reverse_draft_title:"Đã tạo bản nháp đường về", reverse_draft_msg:"Đã đảo thứ tự các điểm và tính lại đường đi.\n\nCác điểm đặt lúc đi trên đường gom, đường dẫn, lối ra vào hoặc đường một chiều có thể không đi qua được ở cùng chỗ khi về. Những đoạn đó sẽ đi vòng hoặc quay đầu và có ⚠ trong danh sách.\n\nHãy kiểm tra các đoạn ⚠, di chuyển hoặc xóa các điểm đó rồi lưu.", seg_warn_tip:"Đi vòng hoặc quay đầu. Điểm này có thể được đặt cho lượt đi", reverse_draft_ok:"Đã hiểu",
   no_fixed_points:"Không có điểm cố định",
   report_user:"Báo cáo người dùng này", report_content:"Báo cáo", block_user:"Chặn", unblock_user:"Bỏ chặn", report_title:"Báo cáo", report_reason_label:"Lý do", report_r_inappropriate:"Nội dung không phù hợp", report_r_personal:"Chứa thông tin cá nhân", report_r_spam:"Quấy rối hoặc spam", report_r_impersonation:"Mạo danh", report_r_other:"Khác", report_detail_ph:"Chi tiết (không bắt buộc)", report_send:"Gửi", report_sent:"Đã gửi báo cáo. Chúng tôi sẽ xem xét.", report_already:"Bạn đã báo cáo rồi", confirm_block:"Chặn {name}? Hai bên sẽ không thấy tuyến và điểm cố định của nhau, theo dõi cũng bị gỡ.", blocked_done:"Đã chặn", blocked_list_title:"Người đã chặn", blocked_none:"Không có ai bị chặn", unblocked_done:"Đã bỏ chặn",
   follow_sort_total:"Nhiều lượt thích nhất (tổng)", follow_sort_routes:"Tuyến được thích nhiều nhất", follow_sort_points:"Điểm được thích nhiều nhất", follow_sort_updated:"Cập nhật gần đây", follow_sort_name:"Tên", user_stats:"Tuyến {r} · Điểm {p} · ❤️ {l}", nav_resumed:"Tiếp tục từ số {n}", nav_from_start:"Từ đầu", nav_set_next_confirm:"Đặt số {n} làm điểm tiếp theo?",
@@ -4492,6 +4507,7 @@ async function updatePolyline(){
   }
   if(token!==polyToken) return;
   segmentDistances = dists;
+  updateSegWarnings();
   renderList();
   // 取れなかった区間があれば、取れるまで自動で取り直す
   if(failed > 0){ if(!segRetryTimer) scheduleSegRetry(); }
@@ -5300,6 +5316,7 @@ function renderList(){
       html+=`<div class="seg-row">
         <span class="seg-chip">${SEG_ICONS[m]}</span>
         <span class="seg-dash" style="${dashStyle}"></span>
+        ${p.segWarn ? `<span title="${fEsc(t('seg_warn_tip'))}" onclick="alert(t('seg_warn_tip'))" style="flex:0 0 auto;font-size:15px;cursor:pointer;">⚠️</span>` : ''}
       </div>`;
     }
     if(addMode && i<points.length-1 && points.length>=2){
@@ -5698,11 +5715,19 @@ function updateNavBar(){
   document.getElementById('nav-dist-next').textContent='';
   document.getElementById('nav-dist-goal').textContent='';
 }
+// 通り過ぎの判定：次のポイントに60m以内まで近づき、その後一番近かった時より20m以上離れたら「着いた」にする
+// （ポイントが反対車線・側道の上にあっても、ナビが止まらないように）
+const PASS_NEAR = 60, PASS_AWAY = 20;
+let passTrack = { idx: -1, min: Infinity };
 function checkProgress(lat,lng){
   if(!navActive||navIndex>=points.length)return;
   navAutoFromPosition(lat, lng);
   const tgt=points[navIndex];
-  if(calcDist(lat,lng,tgt.lat,tgt.lng)<REACH){
+  const dNow = calcDist(lat,lng,tgt.lat,tgt.lng);
+  if(passTrack.idx !== navIndex) passTrack = { idx: navIndex, min: Infinity };
+  if(dNow < passTrack.min) passTrack.min = dNow;
+  const passed = passTrack.min <= PASS_NEAR && dNow >= passTrack.min + PASS_AWAY;
+  if(dNow<REACH || passed){
     const reachedNo = navIndex + 1;
     speak(t('point_reached_speak',{name:tgt.name||t('nav_point_default',{n:reachedNo})}));
     navIndex++;
@@ -5848,24 +5873,58 @@ function speak(txt, queue){
 function reverseRoute(){
   if(points.length<2){alert(t('alert_need_2points'));return;}
   if(!confirm(t('confirm_reverse')))return;
-  // 区間の設定（移動手段・色・線の形）を逆順に付け替える
-  const segs = points.slice(0, points.length-1).map(p=>({
-    segMode: p.segMode, segColor: p.segColor,
-    segPath: p.segPath ? p.segPath.slice().reverse() : null
-  }));
+  // 区間の設定（移動手段・色・線の種類）を逆順に付け替える。
+  // 道の形は使い回さない（行きの車線を逆に走る線になるため）。全部の区間を、復路の向きで道路のサーバーに問い合わせ直す
+  const segs = points.slice(0, points.length-1).map(p=>({ segMode: p.segMode, segColor: p.segColor, segStyle: p.segStyle }));
   points.reverse();
-  points.forEach(p=>{ delete p.segMode; delete p.segColor; delete p.segPath; });
+  points.forEach(p=>{ delete p.segMode; delete p.segColor; delete p.segStyle; delete p.segPath; delete p.segWarn; });
   segs.reverse();
   segs.forEach((sg,i)=>{
     if(sg.segMode) points[i].segMode = sg.segMode;
     if(sg.segColor) points[i].segColor = sg.segColor;
-    if(sg.segPath) points[i].segPath = sg.segPath;
+    if(sg.segStyle) points[i].segStyle = sg.segStyle;
   });
+  reverseDraft = true;   // 遠回り・Uターンの区間に ⚠ を付ける
+  openedRoute = null;    // 行きのルートを上書きしないように（復路は別のルートとして保存する）
   if(navActive)navIndex=0;
+  if(!addMode){ addMode = true; applyEditMode(); }   // そのまま直せるように編集モードに
   rebuildAllMarkers();
   updatePolyline();
   renderList();
   if(navActive)updateNavBar();
+  dupChoice('🔄 ' + t('reverse_draft_title'), `<div style="white-space:pre-line;font-size:13px;line-height:1.7;color:#c9c9d2;">${fEsc(t('reverse_draft_msg'))}</div>`,
+    [{ label: t('reverse_draft_ok'), value: true, primary: true }]);
+}
+// ===== 復路の下書き：遠回り・Uターンの区間を見つける =====
+// ・遠回り：道のりが、直線の距離の2倍以上で、しかも800m以上長い
+// ・Uターン：道の途中で、向きがほぼ逆（150度以上）に変わる
+let reverseDraft = false;
+function bearingOf(a, b){
+  const toR = Math.PI/180, y = Math.sin((b[1]-a[1])*toR) * Math.cos(b[0]*toR);
+  const x = Math.cos(a[0]*toR)*Math.sin(b[0]*toR) - Math.sin(a[0]*toR)*Math.cos(b[0]*toR)*Math.cos((b[1]-a[1])*toR);
+  return (Math.atan2(y, x) / toR + 360) % 360;
+}
+function segLooksWrong(a, b, path){
+  if(!path || path.length < 2) return false;
+  const len = pathLength(path), direct = calcDist(a.lat, a.lng, b.lat, b.lng);
+  if(len > direct * 2 && len - direct > 800) return true;
+  // 15m以上離れた点どうしで向きを比べる
+  const pts = [path[0]];
+  for(const c of path){ const l = pts[pts.length-1]; if(calcDist(l[0], l[1], c[0], c[1]) >= 15) pts.push(c); }
+  for(let k=2;k<pts.length;k++){
+    const d = Math.abs(bearingOf(pts[k-2], pts[k-1]) - bearingOf(pts[k-1], pts[k]));
+    if(Math.min(d, 360 - d) >= 150) return true;
+  }
+  return false;
+}
+function updateSegWarnings(){
+  let any = false;
+  for(let i=0;i<points.length-1;i++){
+    const w = reverseDraft && segNeedsRoad(i) && segLooksWrong(points[i], points[i+1], points[i].segPath);
+    if(w) points[i].segWarn = true; else delete points[i].segWarn;
+    any = any || w;
+  }
+  return any;
 }
 
 // ===== 保存・読み込み =====
@@ -5925,6 +5984,7 @@ function loadRoute(){
 function clearAll(silent=false){
   if(!silent&&points.length&&!confirm(t('confirm_clear_all')))return;
   openedRoute = null;   // 開いているルートを忘れる
+  reverseDraft = false;
   points.forEach(p=>{if(p.marker)map.removeLayer(p.marker);});
   points=[];clearPolylines();
   if(navActive)stopNav();
@@ -7165,7 +7225,7 @@ function outgoingButton(uid){
 function followRow(uid, buttons){
   const name = usernameCache[uid] || '—';
   const st = userStats[uid];
-  const sub = st ? `<div style="font-size:10px;color:#7e7e8b;margin-top:2px;">${t('user_stats', { r: st.routes, p: st.points, l: st.total })}</div>` : '';
+  const sub = st ? `<div style="font-size:10px;color:#7e7e8b;margin-top:2px;white-space:normal;line-height:1.4;">${t('user_stats', { r: st.routes, p: st.points, l: st.total })}</div>` : '';
   return `<div class="follow-row"><div class="follow-name" style="display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="openUserPage('${uid}')">${userAvatarHTML(uid,26)}<div style="min-width:0;"><div style="overflow:hidden;text-overflow:ellipsis;">${fEsc(name)}</div>${sub}</div></div>${buttons}</div>`;
 }
 
