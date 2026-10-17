@@ -5,11 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <title>通報の対応｜MICHI-SHIRUBE</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 <style>
 :root { color-scheme: dark; }
 body { margin:0; background:#08090d; color:#e9e9ee; font-family:"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif; line-height:1.7; }
-.wrap { max-width:560px; margin:0 auto; padding:20px 16px 60px; }
+.wrap { max-width:600px; margin:0 auto; padding:20px 16px 60px; }
 h1 { font-size:18px; color:#ff9f1c; margin:0 0 14px; }
+h2 { font-size:14px; color:#ff9f1c; margin:0 0 8px; }
 .card { background:#12141a; border:1px solid #262b36; border-radius:12px; padding:14px 16px; margin-bottom:14px; }
 table { width:100%; border-collapse:collapse; font-size:14px; }
 th { text-align:left; color:#9a9aa6; font-weight:400; width:7.5em; vertical-align:top; padding:4px 8px 4px 0; }
@@ -18,11 +21,15 @@ td { padding:4px 0; word-break:break-word; }
 .open { background:#3a2a00; color:#ffcf6a; } .done { background:#123a1e; color:#7fd18b; }
 .act { display:block; width:100%; text-align:left; margin:8px 0; padding:12px 14px; border-radius:10px; border:1px solid #343b48; background:#181b23; color:#e9e9ee; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
 .act small { display:block; font-weight:400; font-size:12px; color:#9a9aa6; margin-top:2px; }
-.act.warn { border-color:#7a4a00; } .act.danger { border-color:#5a1f1f; color:#ff8a8a; }
+.act.warn { border-color:#7a4a00; } .act.danger { border-color:#5a1f1f; color:#ff8a8a; } .act.undo { border-color:#2d5a8a; color:#9cc8ff; }
 .act:disabled { opacity:0.4; cursor:default; }
 .msg { font-size:14px; padding:10px 12px; border-radius:8px; margin-bottom:12px; display:none; }
 .ok { background:#123a1e; color:#a6f0b4; } .err { background:#3a1212; color:#ffb3b3; }
 .note { font-size:12px; color:#7e7e8b; }
+#map { width:100%; height:240px; border-radius:10px; overflow:hidden; margin-top:8px; background:#1b1f28; }
+.photo { max-width:100%; max-height:260px; border-radius:8px; display:block; margin-top:8px; }
+textarea { width:100%; box-sizing:border-box; height:90px; background:#08090d; border:1px solid #262b36; border-radius:8px; color:#e9e9ee; padding:8px; font-size:14px; font-family:inherit; resize:vertical; }
+a { color:#ffcf6a; }
 </style>
 </head>
 <body>
@@ -30,14 +37,25 @@ td { padding:4px 0; word-break:break-word; }
   <h1>⚠ 通報の対応</h1>
   <div id="msg" class="msg"></div>
   <div id="info" class="card">読み込み中…</div>
+  <div id="target" class="card" style="display:none;">
+    <h2>通報された中身（運営者として、公開範囲に関係なく表示）</h2>
+    <div id="target-body"></div>
+    <div id="map"></div>
+  </div>
   <div id="acts" class="card" style="display:none;">
-    <div style="font-size:13px;color:#9a9aa6;margin-bottom:4px;">対応を選んでください（押すと確認が出ます）</div>
+    <h2>対応（押すと確認が出ます）</h2>
     <button class="act warn" id="b-hide" onclick="act('hide','通報されたものを非公開にしますか？')">非公開にする<small>通報されたルート・固定ポイントだけを、持ち主以外から見えなくします。持ち主は自分のマイリストで見られます</small></button>
     <button class="act warn" id="b-hide_all" onclick="act('hide_all','この人の公開・フォロワー公開を、全部非公開にしますか？')">持ち主の公開を全部止める<small>その人のルート・固定ポイント・フォルダを全部非公開にします（悪質な時）</small></button>
     <button class="act danger" id="b-ban" onclick="act('ban','この人のアカウントを止めますか？ログインできなくなります')">アカウントを止める<small>その人はログインできなくなります。データは消えません。後で戻せます</small></button>
-    <button class="act" id="b-unban" onclick="act('unban','アカウントの停止を戻しますか？')" style="display:none;">アカウントの停止を戻す<small>止めたアカウントを、またログインできるようにします</small></button>
+    <button class="act" id="b-unban" onclick="act('unban','アカウントの停止を戻しますか？')">アカウントの停止を戻す<small>止めたアカウントを、またログインできるようにします</small></button>
     <button class="act" id="b-done" onclick="act('done','何も変えずに、対応済みにしますか？')">問題なし（対応済みにする）<small>何も変えずに閉じます</small></button>
-    <button class="act" id="b-reopen" onclick="act('reopen','未対応に戻しますか？')" style="display:none;">未対応に戻す<small>もう一度確認したい時に</small></button>
+    <button class="act undo" id="b-undo" onclick="act('undo','この通報で行った対応を全部取り消して、未対応に戻しますか？\n（非公開にしたものは元の公開範囲に、止めたアカウントは元に戻ります）')">対応を取り消す（未対応に戻す）<small>この通報で行った対応を全部元に戻し、未対応に戻します</small></button>
+  </div>
+  <div id="notify" class="card" style="display:none;">
+    <h2>持ち主（通報された人）にメールで知らせる</h2>
+    <div class="note" style="margin-bottom:6px;">対象・通報の理由・運営者の対応（最後に行ったもの）と、下に書いた文が送られます。<b>通報した人の名前は送りません。</b>返信は contact@thkilroy.com に届きます。</div>
+    <textarea id="notify-msg" placeholder="運営者からのひとこと（なくてもよい）&#10;例：住所が書かれていたため、非公開にしました。住所を消せば、また公開できます。"></textarea>
+    <button class="act" id="b-notify" onclick="notifyOwner()" style="margin-top:10px;">メールを送る<small id="notify-sub">送る前に確認が出ます</small></button>
   </div>
   <p class="note">このページは、通報のメールのリンクからだけ開けます。リンクは人に転送しないでください。</p>
 </div>
@@ -50,38 +68,102 @@ const TYPE = { user:'利用者', route:'ルート', point:'固定ポイント' }
 const REASON = { inappropriate:'不適切な内容', personal:'個人情報が載っている', spam:'迷惑行為・宣伝', impersonation:'なりすまし', other:'その他' };
 const VIS = { public:'公開', followers:'フォロワーに公開', private:'非公開' };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let data = null, map = null;
 async function rpc(name, body){
   const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, { method:'POST',
     headers:{ apikey:SUPABASE_KEY, Authorization:'Bearer ' + SUPABASE_KEY, 'Content-Type':'application/json' }, body: JSON.stringify(body) });
   if(!r.ok) throw new Error(await r.text());
   return r.json();
 }
-function show(msg, ok){ const m = document.getElementById('msg'); m.textContent = msg; m.className = 'msg ' + (ok ? 'ok' : 'err'); m.style.display = 'block'; }
+function show(msg, ok){ const m = document.getElementById('msg'); m.textContent = msg; m.className = 'msg ' + (ok ? 'ok' : 'err'); m.style.display = 'block'; window.scrollTo(0, 0); }
+function lastAction(note){ const a = (note || '').split(' / ').filter(Boolean); return a.length ? a[a.length - 1] : ''; }
 function render(d){
-  const target = d.target_type === 'user' ? (d.owner_name || '-') : (d.target_exists ? (d.target_name || '（名前なし）') : '（もう削除されています）');
-  const shareKind = d.target_type === 'route' ? 'r' : d.target_type === 'point' ? 'p' : null;
-  const link = (shareKind && d.target_exists && d.target_visibility !== 'private') ? `<a href="https://thkilroy.com/michishirube/?${shareKind}=${esc(d.target_id)}" target="_blank" rel="noopener" style="color:#ffcf6a;">地図で見る</a>` : '';
+  data = d;
+  const tg = d.target || {};
+  const name = d.target_type === 'user' ? (d.owner_name || '-') : (d.target_exists ? (tg.name || '（名前なし）') : '（もう削除されています）');
+  const kind = d.target_type === 'route' ? 'r' : d.target_type === 'point' ? 'p' : null;
+  const appLink = (kind && d.target_exists && tg.visibility !== 'private') ? ` <a href="https://thkilroy.com/michishirube/?${kind}=${esc(d.target_id)}" target="_blank" rel="noopener">アプリで開く</a>` : '';
   document.getElementById('info').innerHTML = `<table>
     <tr><th>状態</th><td><span class="badge ${d.status}">${d.status === 'done' ? '対応済み' : '未対応'}</span>${d.handled_note ? '<br><span class="note">' + esc(d.handled_note) + '</span>' : ''}</td></tr>
     <tr><th>種類</th><td>${esc(TYPE[d.target_type] || d.target_type)}</td></tr>
-    <tr><th>対象</th><td>${esc(target)} ${link}</td></tr>
-    ${d.target_type !== 'user' ? `<tr><th>今の公開範囲</th><td>${esc(VIS[d.target_visibility] || '-')}</td></tr>` : ''}
+    <tr><th>対象</th><td>${esc(name)}${appLink}</td></tr>
+    ${d.target_type !== 'user' && d.target_exists ? `<tr><th>今の公開範囲</th><td>${esc(VIS[tg.visibility] || '-')}</td></tr>` : ''}
     <tr><th>持ち主</th><td>${esc(d.owner_name || '-')}${d.owner_banned ? ' <span class="badge" style="background:#3a1212;color:#ff9a9a;">停止中</span>' : ''}<br><span class="note">公開・フォロワー公開しているもの：${d.owner_public_count} 件</span></td></tr>
     <tr><th>理由</th><td>${esc(REASON[d.reason] || d.reason)}</td></tr>
     <tr><th>くわしく</th><td>${esc(d.detail || '（なし）')}</td></tr>
     <tr><th>通報した人</th><td>${esc(d.reporter_name || '-')}</td></tr>
     <tr><th>日時</th><td>${esc(new Date(d.created_at).toLocaleString('ja-JP'))}</td></tr>
     <tr><th>同じ対象への通報</th><td>${d.same_target_reports} 件</td></tr>
+    ${d.notified_at ? `<tr><th>持ち主に連絡</th><td>${esc(new Date(d.notified_at).toLocaleString('ja-JP'))}</td></tr>` : ''}
   </table>`;
+  renderTarget(d);
+  // ボタン：全部押せる状態に戻してから、今の状態に合わせる
   document.getElementById('acts').style.display = 'block';
+  const btn = id => document.getElementById(id);
+  document.querySelectorAll('#acts .act').forEach(b => { b.disabled = false; b.style.display = ''; }); document.getElementById('b-notify').disabled = false;
   const isItem = d.target_type !== 'user';
-  document.getElementById('b-hide').style.display = isItem ? '' : 'none';
-  document.getElementById('b-hide').disabled = !d.target_exists || d.target_visibility === 'private';
-  document.getElementById('b-hide_all').disabled = !d.owner_public_count;
-  document.getElementById('b-ban').style.display = d.owner_banned ? 'none' : '';
-  document.getElementById('b-unban').style.display = d.owner_banned ? '' : 'none';
-  document.getElementById('b-done').style.display = d.status === 'done' ? 'none' : '';
-  document.getElementById('b-reopen').style.display = d.status === 'done' ? '' : 'none';
+  btn('b-hide').style.display = isItem ? '' : 'none';
+  btn('b-hide').disabled = !d.target_exists || tg.visibility === 'private';
+  btn('b-hide_all').disabled = !d.owner_public_count;
+  btn('b-ban').style.display = d.owner_banned ? 'none' : '';
+  btn('b-ban').disabled = !d.owner_exists;
+  btn('b-unban').style.display = d.owner_banned ? '' : 'none';
+  btn('b-done').style.display = d.status === 'done' ? 'none' : '';
+  btn('b-undo').style.display = (d.can_undo || d.status === 'done') ? '' : 'none';
+  document.getElementById('notify').style.display = d.owner_exists ? 'block' : 'none';
+  document.getElementById('notify-sub').textContent = '送る前に確認が出ます' + (d.notified_at ? '（前回：' + new Date(d.notified_at).toLocaleString('ja-JP') + '）' : '');
+}
+function renderTarget(d){
+  const tg = d.target;
+  const box = document.getElementById('target');
+  if(!tg){ box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  let html = '<table>';
+  html += `<tr><th>名前</th><td>${esc(tg.name || '（名前なし）')}</td></tr>`;
+  if(d.target_type === 'point'){
+    html += `<tr><th>メモ</th><td>${esc(tg.memo || '（なし）')}</td></tr>`;
+    html += `<tr><th>場所</th><td>${(+tg.lat).toFixed(5)}, ${(+tg.lng).toFixed(5)} <a href="https://www.google.com/maps?q=${tg.lat},${tg.lng}" target="_blank" rel="noopener">Googleマップ</a></td></tr>`;
+  } else {
+    const pts = tg.points || [];
+    const memos = pts.filter(p => p.name || p.memo).slice(0, 30).map((p, i) => `${esc(p.name || '')}${p.memo ? '：' + esc(p.memo) : ''}`).join('<br>');
+    html += `<tr><th>ポイント</th><td>${pts.length} 個${memos ? '<br><span class="note">' + memos + '</span>' : ''}</td></tr>`;
+  }
+  html += '</table>';
+  if(d.target_type === 'point' && tg.photo_thumb_url) html += `<a href="${esc(tg.photo_url || tg.photo_thumb_url)}" target="_blank" rel="noopener"><img class="photo" src="${esc(tg.photo_thumb_url)}" alt=""></a>`;
+  document.getElementById('target-body').innerHTML = html;
+  drawMap(d);
+}
+function drawMap(d){
+  const tg = d.target; if(!tg || typeof maplibregl === 'undefined') return;
+  let coords = [];
+  if(d.target_type === 'point') coords = [[+tg.lng, +tg.lat]];
+  else (tg.points || []).forEach((p, i, a) => {
+    if(p.segPath && p.segPath.length > 1 && i < a.length - 1) p.segPath.forEach(c => coords.push([+c[1], +c[0]]));
+    else coords.push([+p.lng, +p.lat]);
+  });
+  if(!coords.length) return;
+  const fit = () => {
+    if(coords.length === 1){ map.jumpTo({ center: coords[0], zoom: 15 }); return; }
+    const b = coords.reduce((bb, c) => bb.extend(c), new maplibregl.LngLatBounds(coords[0], coords[0]));
+    map.fitBounds(b, { padding: 30, duration: 0 });
+  };
+  if(!map){
+    map = new maplibregl.Map({ container:'map', style:'https://tiles.openfreemap.org/styles/liberty', center: coords[0], zoom: 14, attributionControl:{ compact:true } });
+    map.on('load', () => {
+      if(d.target_type === 'point') new maplibregl.Marker({ color:'#ff9f1c' }).setLngLat(coords[0]).addTo(map);
+      else {
+        map.addSource('r', { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates: coords } } });
+        map.addLayer({ id:'r', type:'line', source:'r', paint:{ 'line-color':'#ff9f1c', 'line-width':4 } });
+        (tg.points || []).forEach((p, i) => {
+          const el = document.createElement('div');
+          el.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#ff9f1c;color:#000;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff;';
+          el.textContent = i + 1;
+          new maplibregl.Marker({ element: el }).setLngLat([+p.lng, +p.lat]).addTo(map);
+        });
+      }
+      fit();
+    });
+  }
 }
 async function load(){
   if(!ID || !TOKEN){ document.getElementById('info').textContent = 'リンクが正しくありません。'; return; }
@@ -93,8 +175,22 @@ async function act(action, question){
   document.querySelectorAll('.act').forEach(b => b.disabled = true);
   try{
     const d = await rpc('report_action', { p_id: ID, p_token: TOKEN, p_action: action });
-    render(d); show('対応しました：' + (d.handled_note || '').split(' / ').pop(), true);
+    render(d);
+    show(action === 'undo' ? '対応を取り消して、未対応に戻しました' : '対応しました：' + lastAction(d.handled_note), true);
   }catch(e){ show('できませんでした：' + e.message, false); load(); }
+}
+async function notifyOwner(){
+  if(!data) return;
+  const msg = document.getElementById('notify-msg').value.trim();
+  const tg = data.target || {};
+  const preview = `${data.owner_name || ''} さんに、次の内容でメールを送ります。\n\n対象：${TYPE[data.target_type] || ''}${tg.name ? '「' + tg.name + '」' : ''}\n通報の理由：${REASON[data.reason] || data.reason}\n運営者の対応：${lastAction(data.handled_note) || '確認中'}\n運営者から：${msg || '（なし）'}\n\n送りますか？`;
+  if(!confirm(preview)) return;
+  const b = document.getElementById('b-notify'); b.disabled = true;
+  try{
+    const d = await rpc('report_notify_owner', { p_id: ID, p_token: TOKEN, p_message: msg });
+    render(d); show('持ち主にメールを送りました', true);
+  }catch(e){ show('送れませんでした：' + e.message, false); }
+  finally{ b.disabled = false; }
 }
 load();
 </script>

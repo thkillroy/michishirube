@@ -1979,6 +1979,7 @@ const SUPPORTED_LANGS = ['ja','en','zh-CN','zh-TW','ko','es','fr','th','vi','de'
 const translations = {
 ja: {
   gps_waiting:'📡 GPS待機中', gps_error:'📡 GPS失敗', gps_accuracy:'📡 精度 ±{m}m',
+  no_fixed_points:"固定ポイントがありません",
   report_user:"このユーザーを通報", report_content:"通報", block_user:"ブロック", unblock_user:"ブロックを解除", report_title:"通報する", report_reason_label:"理由", report_r_inappropriate:"不適切な内容", report_r_personal:"個人情報が載っている", report_r_spam:"迷惑行為・宣伝", report_r_impersonation:"なりすまし", report_r_other:"その他", report_detail_ph:"くわしく（なくてもよい）", report_send:"送る", report_sent:"通報を送りました。運営者が確認します", report_already:"すでに通報しています", confirm_block:"{name} さんをブロックしますか？お互いのルート・固定ポイントが見えなくなり、フォローも解除されます", blocked_done:"ブロックしました", blocked_list_title:"ブロック中の人", blocked_none:"ブロック中の人はいません", unblocked_done:"ブロックを解除しました",
   follow_sort_total:"いいねが多い順（合計）", follow_sort_routes:"ルートのいいねが多い順", follow_sort_points:"固定ポイントのいいねが多い順", follow_sort_updated:"更新が新しい順", follow_sort_name:"名前順", user_stats:"ルート {r} · 固定ポイント {p} · ❤️ {l}", nav_resumed:"{n}番から再開しました", nav_from_start:"最初から", nav_set_next_confirm:"{n}番を次のポイントにしますか？",
   style_marks_label:"文字とマーク", style_label_all:"全部表示", style_label_names:"地名・道路名・駅名だけ", style_label_none:"全部消す",
@@ -2042,6 +2043,7 @@ ja: {
 },
 en: {
   gps_waiting:'📡 Waiting for GPS', gps_error:'📡 GPS failed', gps_accuracy:'📡 Accuracy ±{m}m',
+  no_fixed_points:"No fixed points",
   report_user:"Report this user", report_content:"Report", block_user:"Block", unblock_user:"Unblock", report_title:"Report", report_reason_label:"Reason", report_r_inappropriate:"Inappropriate content", report_r_personal:"Contains personal information", report_r_spam:"Harassment or spam", report_r_impersonation:"Impersonation", report_r_other:"Other", report_detail_ph:"Details (optional)", report_send:"Send", report_sent:"Report sent. We will review it.", report_already:"You have already reported this", confirm_block:"Block {name}? You will no longer see each other’s routes and fixed points, and any follows will be removed.", blocked_done:"Blocked", blocked_list_title:"Blocked users", blocked_none:"No blocked users", unblocked_done:"Unblocked",
   follow_sort_total:"Most likes (total)", follow_sort_routes:"Most route likes", follow_sort_points:"Most fixed-point likes", follow_sort_updated:"Recently updated", follow_sort_name:"Name", user_stats:"Routes {r} · Points {p} · ❤️ {l}", nav_resumed:"Resumed from #{n}", nav_from_start:"From the start", nav_set_next_confirm:"Make #{n} the next point?",
   style_marks_label:"Labels & icons", style_label_all:"Show all", style_label_names:"Place, road & station names only", style_label_none:"Hide all",
@@ -2105,6 +2107,7 @@ en: {
 },
 'zh-CN': {
   gps_waiting:'📡 等待GPS', gps_error:'📡 GPS失败', gps_accuracy:'📡 精度 ±{m}米',
+  no_fixed_points:"没有固定点",
   report_user:"举报此用户", report_content:"举报", block_user:"屏蔽", unblock_user:"取消屏蔽", report_title:"举报", report_reason_label:"原因", report_r_inappropriate:"不当内容", report_r_personal:"包含个人信息", report_r_spam:"骚扰或广告", report_r_impersonation:"冒充他人", report_r_other:"其他", report_detail_ph:"详细说明（可选）", report_send:"发送", report_sent:"已发送举报，我们会进行确认", report_already:"你已经举报过了", confirm_block:"要屏蔽 {name} 吗？双方将看不到彼此的路线和固定点，关注也会解除", blocked_done:"已屏蔽", blocked_list_title:"已屏蔽的用户", blocked_none:"没有已屏蔽的用户", unblocked_done:"已取消屏蔽",
   follow_sort_total:"点赞最多（合计）", follow_sort_routes:"路线点赞最多", follow_sort_points:"固定点点赞最多", follow_sort_updated:"最近更新", follow_sort_name:"按名称", user_stats:"路线 {r} · 固定点 {p} · ❤️ {l}", nav_resumed:"已从第{n}个继续", nav_from_start:"从头开始", nav_set_next_confirm:"将第{n}个设为下一个点吗？",
   style_marks_label:"文字与图标", style_label_all:"全部显示", style_label_names:"仅地名・道路名・车站名", style_label_none:"全部隐藏",
@@ -2168,6 +2171,7 @@ en: {
 },
 'zh-TW': {
   gps_waiting:'📡 等待GPS', gps_error:'📡 GPS失敗', gps_accuracy:'📡 精度 ±{m}公尺',
+  no_fixed_points:"沒有固定點",
   report_user:"檢舉此使用者", report_content:"檢舉", block_user:"封鎖", unblock_user:"解除封鎖", report_title:"檢舉", report_reason_label:"原因", report_r_inappropriate:"不當內容", report_r_personal:"包含個人資料", report_r_spam:"騷擾或廣告", report_r_impersonation:"冒充他人", report_r_other:"其他", report_detail_ph:"詳細說明（可不填）", report_send:"送出", report_sent:"已送出檢舉，我們會確認", report_already:"你已經檢舉過了", confirm_block:"要封鎖 {name} 嗎？雙方將看不到彼此的路線和固定點，追蹤也會解除", blocked_done:"已封鎖", blocked_list_title:"封鎖中的使用者", blocked_none:"沒有封鎖中的使用者", unblocked_done:"已解除封鎖",
   follow_sort_total:"按讚最多（合計）", follow_sort_routes:"路線按讚最多", follow_sort_points:"固定點按讚最多", follow_sort_updated:"最近更新", follow_sort_name:"依名稱", user_stats:"路線 {r} · 固定點 {p} · ❤️ {l}", nav_resumed:"已從第{n}個繼續", nav_from_start:"從頭開始", nav_set_next_confirm:"要將第{n}個設為下一個點嗎？",
   style_marks_label:"文字與圖示", style_label_all:"全部顯示", style_label_names:"僅地名・道路名・車站名", style_label_none:"全部隱藏",
@@ -2231,6 +2235,7 @@ en: {
 },
 ko: {
   gps_waiting:'📡 GPS 대기 중', gps_error:'📡 GPS 실패', gps_accuracy:'📡 정확도 ±{m}m',
+  no_fixed_points:"고정 포인트가 없습니다",
   report_user:"이 사용자 신고", report_content:"신고", block_user:"차단", unblock_user:"차단 해제", report_title:"신고하기", report_reason_label:"이유", report_r_inappropriate:"부적절한 내용", report_r_personal:"개인정보가 포함됨", report_r_spam:"괴롭힘·광고", report_r_impersonation:"사칭", report_r_other:"기타", report_detail_ph:"자세히(선택)", report_send:"보내기", report_sent:"신고를 보냈습니다. 운영자가 확인합니다", report_already:"이미 신고했습니다", confirm_block:"{name}님을 차단할까요? 서로의 루트와 고정 포인트가 보이지 않게 되고 팔로우도 해제됩니다", blocked_done:"차단했습니다", blocked_list_title:"차단한 사용자", blocked_none:"차단한 사용자가 없습니다", unblocked_done:"차단을 해제했습니다",
   follow_sort_total:"좋아요 많은 순(합계)", follow_sort_routes:"루트 좋아요 많은 순", follow_sort_points:"고정 포인트 좋아요 많은 순", follow_sort_updated:"최근 업데이트 순", follow_sort_name:"이름순", user_stats:"루트 {r} · 고정 포인트 {p} · ❤️ {l}", nav_resumed:"{n}번부터 재개했습니다", nav_from_start:"처음부터", nav_set_next_confirm:"{n}번을 다음 포인트로 할까요?",
   style_marks_label:"글자와 아이콘", style_label_all:"모두 표시", style_label_names:"지명・도로명・역명만", style_label_none:"모두 숨기기",
@@ -2294,6 +2299,7 @@ ko: {
 },
 es: {
   gps_waiting:'📡 Esperando GPS', gps_error:'📡 Error de GPS', gps_accuracy:'📡 Precisión ±{m}m',
+  no_fixed_points:"No hay puntos fijos",
   report_user:"Denunciar a este usuario", report_content:"Denunciar", block_user:"Bloquear", unblock_user:"Desbloquear", report_title:"Denunciar", report_reason_label:"Motivo", report_r_inappropriate:"Contenido inapropiado", report_r_personal:"Contiene datos personales", report_r_spam:"Acoso o spam", report_r_impersonation:"Suplantación", report_r_other:"Otro", report_detail_ph:"Detalles (opcional)", report_send:"Enviar", report_sent:"Denuncia enviada. La revisaremos.", report_already:"Ya lo has denunciado", confirm_block:"¿Bloquear a {name}? Dejaréis de ver las rutas y puntos fijos del otro y se quitarán los seguimientos.", blocked_done:"Bloqueado", blocked_list_title:"Usuarios bloqueados", blocked_none:"No hay usuarios bloqueados", unblocked_done:"Desbloqueado",
   follow_sort_total:"Más me gusta (total)", follow_sort_routes:"Más me gusta en rutas", follow_sort_points:"Más me gusta en puntos", follow_sort_updated:"Actualizados recientemente", follow_sort_name:"Nombre", user_stats:"Rutas {r} · Puntos {p} · ❤️ {l}", nav_resumed:"Reanudado desde el n.º {n}", nav_from_start:"Desde el inicio", nav_set_next_confirm:"¿Hacer del n.º {n} el siguiente punto?",
   style_marks_label:"Textos e iconos", style_label_all:"Mostrar todo", style_label_names:"Solo lugares, calles y estaciones", style_label_none:"Ocultar todo",
@@ -2357,6 +2363,7 @@ es: {
 },
 fr: {
   gps_waiting:'📡 En attente du GPS', gps_error:'📡 Échec du GPS', gps_accuracy:'📡 Précision ±{m}m',
+  no_fixed_points:"Aucun point fixe",
   report_user:"Signaler cet utilisateur", report_content:"Signaler", block_user:"Bloquer", unblock_user:"Débloquer", report_title:"Signaler", report_reason_label:"Motif", report_r_inappropriate:"Contenu inapproprié", report_r_personal:"Contient des informations personnelles", report_r_spam:"Harcèlement ou spam", report_r_impersonation:"Usurpation d’identité", report_r_other:"Autre", report_detail_ph:"Détails (facultatif)", report_send:"Envoyer", report_sent:"Signalement envoyé. Nous allons l’examiner.", report_already:"Vous l’avez déjà signalé", confirm_block:"Bloquer {name} ? Vous ne verrez plus les itinéraires et points de l’autre, et les abonnements seront supprimés.", blocked_done:"Bloqué", blocked_list_title:"Utilisateurs bloqués", blocked_none:"Aucun utilisateur bloqué", unblocked_done:"Débloqué",
   follow_sort_total:"Plus de j’aime (total)", follow_sort_routes:"Plus de j’aime (itinéraires)", follow_sort_points:"Plus de j’aime (points)", follow_sort_updated:"Mis à jour récemment", follow_sort_name:"Nom", user_stats:"Itinéraires {r} · Points {p} · ❤️ {l}", nav_resumed:"Reprise au n° {n}", nav_from_start:"Depuis le début", nav_set_next_confirm:"Faire du n° {n} le prochain point ?",
   style_marks_label:"Textes et icônes", style_label_all:"Tout afficher", style_label_names:"Lieux, routes et gares seulement", style_label_none:"Tout masquer",
@@ -2420,6 +2427,7 @@ fr: {
 },
 th: {
   gps_waiting:'📡 กำลังรอ GPS', gps_error:'📡 GPS ล้มเหลว', gps_accuracy:'📡 ความแม่นยำ ±{m}ม.',
+  no_fixed_points:"ไม่มีจุดถาวร",
   report_user:"รายงานผู้ใช้นี้", report_content:"รายงาน", block_user:"บล็อก", unblock_user:"เลิกบล็อก", report_title:"รายงาน", report_reason_label:"เหตุผล", report_r_inappropriate:"เนื้อหาไม่เหมาะสม", report_r_personal:"มีข้อมูลส่วนตัว", report_r_spam:"การคุกคามหรือสแปม", report_r_impersonation:"การแอบอ้าง", report_r_other:"อื่น ๆ", report_detail_ph:"รายละเอียด (ไม่บังคับ)", report_send:"ส่ง", report_sent:"ส่งรายงานแล้ว ผู้ดูแลจะตรวจสอบ", report_already:"คุณรายงานไปแล้ว", confirm_block:"บล็อก {name} หรือไม่? ทั้งสองฝ่ายจะไม่เห็นเส้นทางและจุดถาวรของกัน และการติดตามจะถูกยกเลิก", blocked_done:"บล็อกแล้ว", blocked_list_title:"ผู้ใช้ที่บล็อก", blocked_none:"ไม่มีผู้ใช้ที่บล็อก", unblocked_done:"เลิกบล็อกแล้ว",
   follow_sort_total:"ถูกใจมากที่สุด (รวม)", follow_sort_routes:"เส้นทางที่ถูกใจมากที่สุด", follow_sort_points:"จุดถาวรที่ถูกใจมากที่สุด", follow_sort_updated:"อัปเดตล่าสุด", follow_sort_name:"ชื่อ", user_stats:"เส้นทาง {r} · จุดถาวร {p} · ❤️ {l}", nav_resumed:"เริ่มต่อจากจุดที่ {n}", nav_from_start:"เริ่มใหม่", nav_set_next_confirm:"ตั้งจุดที่ {n} เป็นจุดถัดไปหรือไม่?",
   style_marks_label:"ข้อความและไอคอน", style_label_all:"แสดงทั้งหมด", style_label_names:"เฉพาะชื่อสถานที่ ถนน และสถานี", style_label_none:"ซ่อนทั้งหมด",
@@ -2483,6 +2491,7 @@ th: {
 },
 de: {
   gps_waiting:'📡 Warte auf GPS', gps_error:'📡 GPS-Fehler', gps_accuracy:'📡 Genauigkeit ±{m}m',
+  no_fixed_points:"Keine festen Punkte",
   report_user:"Diesen Nutzer melden", report_content:"Melden", block_user:"Blockieren", unblock_user:"Blockierung aufheben", report_title:"Melden", report_reason_label:"Grund", report_r_inappropriate:"Unangemessener Inhalt", report_r_personal:"Enthält persönliche Daten", report_r_spam:"Belästigung oder Spam", report_r_impersonation:"Identitätsdiebstahl", report_r_other:"Sonstiges", report_detail_ph:"Details (optional)", report_send:"Senden", report_sent:"Meldung gesendet. Wir prüfen sie.", report_already:"Bereits gemeldet", confirm_block:"{name} blockieren? Ihr seht die Routen und festen Punkte des anderen nicht mehr, und Follows werden entfernt.", blocked_done:"Blockiert", blocked_list_title:"Blockierte Nutzer", blocked_none:"Keine blockierten Nutzer", unblocked_done:"Blockierung aufgehoben",
   follow_sort_total:"Meiste Likes (gesamt)", follow_sort_routes:"Meiste Routen-Likes", follow_sort_points:"Meiste Punkt-Likes", follow_sort_updated:"Zuletzt aktualisiert", follow_sort_name:"Name", user_stats:"Routen {r} · Punkte {p} · ❤️ {l}", nav_resumed:"Fortgesetzt ab Nr. {n}", nav_from_start:"Von vorne", nav_set_next_confirm:"Nr. {n} als nächsten Punkt setzen?",
   style_marks_label:"Beschriftungen & Symbole", style_label_all:"Alles anzeigen", style_label_names:"Nur Orte, Straßen und Bahnhöfe", style_label_none:"Alles ausblenden",
@@ -2546,6 +2555,7 @@ de: {
 },
 ru: {
   gps_waiting:'📡 Ожидание GPS', gps_error:'📡 Ошибка GPS', gps_accuracy:'📡 Точность ±{m}м',
+  no_fixed_points:"Нет постоянных точек",
   report_user:"Пожаловаться на пользователя", report_content:"Пожаловаться", block_user:"Заблокировать", unblock_user:"Разблокировать", report_title:"Жалоба", report_reason_label:"Причина", report_r_inappropriate:"Неуместный контент", report_r_personal:"Личные данные", report_r_spam:"Преследование или спам", report_r_impersonation:"Выдача себя за другого", report_r_other:"Другое", report_detail_ph:"Подробности (необязательно)", report_send:"Отправить", report_sent:"Жалоба отправлена. Мы её проверим.", report_already:"Вы уже пожаловались", confirm_block:"Заблокировать {name}? Вы перестанете видеть маршруты и точки друг друга, подписки будут удалены.", blocked_done:"Заблокирован", blocked_list_title:"Заблокированные", blocked_none:"Нет заблокированных", unblocked_done:"Разблокирован",
   follow_sort_total:"Больше всего лайков (всего)", follow_sort_routes:"Больше лайков у маршрутов", follow_sort_points:"Больше лайков у точек", follow_sort_updated:"Недавно обновлённые", follow_sort_name:"По имени", user_stats:"Маршруты {r} · Точки {p} · ❤️ {l}", nav_resumed:"Продолжено с №{n}", nav_from_start:"С начала", nav_set_next_confirm:"Сделать №{n} следующей точкой?",
   style_marks_label:"Подписи и значки", style_label_all:"Показать всё", style_label_names:"Только места, дороги и станции", style_label_none:"Скрыть всё",
@@ -2609,6 +2619,7 @@ ru: {
 },
 pt: {
   gps_waiting:'📡 Aguardando GPS', gps_error:'📡 Falha no GPS', gps_accuracy:'📡 Precisão ±{m}m',
+  no_fixed_points:"Nenhum ponto fixo",
   report_user:"Denunciar este usuário", report_content:"Denunciar", block_user:"Bloquear", unblock_user:"Desbloquear", report_title:"Denunciar", report_reason_label:"Motivo", report_r_inappropriate:"Conteúdo impróprio", report_r_personal:"Contém dados pessoais", report_r_spam:"Assédio ou spam", report_r_impersonation:"Falsidade ideológica", report_r_other:"Outro", report_detail_ph:"Detalhes (opcional)", report_send:"Enviar", report_sent:"Denúncia enviada. Vamos analisar.", report_already:"Você já denunciou", confirm_block:"Bloquear {name}? Vocês não verão mais as rotas e pontos um do outro, e os seguimentos serão removidos.", blocked_done:"Bloqueado", blocked_list_title:"Usuários bloqueados", blocked_none:"Nenhum usuário bloqueado", unblocked_done:"Desbloqueado",
   follow_sort_total:"Mais curtidas (total)", follow_sort_routes:"Mais curtidas em rotas", follow_sort_points:"Mais curtidas em pontos", follow_sort_updated:"Atualizados recentemente", follow_sort_name:"Nome", user_stats:"Rotas {r} · Pontos {p} · ❤️ {l}", nav_resumed:"Retomado do nº {n}", nav_from_start:"Do início", nav_set_next_confirm:"Tornar o nº {n} o próximo ponto?",
   style_marks_label:"Textos e ícones", style_label_all:"Mostrar tudo", style_label_names:"Só lugares, ruas e estações", style_label_none:"Ocultar tudo",
@@ -2672,6 +2683,7 @@ pt: {
 },
 ar: {
   gps_waiting:'📡 في انتظار GPS', gps_error:'📡 فشل GPS', gps_accuracy:'📡 الدقة ±{m} م',
+  no_fixed_points:"لا توجد نقاط ثابتة",
   report_user:"الإبلاغ عن هذا المستخدم", report_content:"إبلاغ", block_user:"حظر", unblock_user:"إلغاء الحظر", report_title:"إبلاغ", report_reason_label:"السبب", report_r_inappropriate:"محتوى غير لائق", report_r_personal:"يحتوي على معلومات شخصية", report_r_spam:"مضايقة أو رسائل مزعجة", report_r_impersonation:"انتحال شخصية", report_r_other:"أخرى", report_detail_ph:"تفاصيل (اختياري)", report_send:"إرسال", report_sent:"تم إرسال البلاغ وسنراجعه", report_already:"لقد أبلغت عن هذا من قبل", confirm_block:"حظر {name}؟ لن يرى أي منكما مسارات ونقاط الآخر، وستُلغى المتابعات.", blocked_done:"تم الحظر", blocked_list_title:"المستخدمون المحظورون", blocked_none:"لا يوجد مستخدمون محظورون", unblocked_done:"تم إلغاء الحظر",
   follow_sort_total:"الأكثر إعجابًا (الإجمالي)", follow_sort_routes:"الأكثر إعجابًا في المسارات", follow_sort_points:"الأكثر إعجابًا في النقاط", follow_sort_updated:"المحدّثة مؤخرًا", follow_sort_name:"الاسم", user_stats:"مسارات {r} · نقاط {p} · ❤️ {l}", nav_resumed:"تم الاستئناف من رقم {n}", nav_from_start:"من البداية", nav_set_next_confirm:"هل تجعل رقم {n} النقطة التالية؟",
   style_marks_label:"النصوص والرموز", style_label_all:"إظهار الكل", style_label_names:"أسماء الأماكن والطرق والمحطات فقط", style_label_none:"إخفاء الكل",
@@ -2735,6 +2747,7 @@ ar: {
 },
 it: {
   gps_waiting:'📡 In attesa del GPS', gps_error:'📡 GPS non riuscito', gps_accuracy:'📡 Precisione ±{m}m',
+  no_fixed_points:"Nessun punto fisso",
   report_user:"Segnala questo utente", report_content:"Segnala", block_user:"Blocca", unblock_user:"Sblocca", report_title:"Segnala", report_reason_label:"Motivo", report_r_inappropriate:"Contenuto inappropriato", report_r_personal:"Contiene dati personali", report_r_spam:"Molestie o spam", report_r_impersonation:"Furto d’identità", report_r_other:"Altro", report_detail_ph:"Dettagli (facoltativo)", report_send:"Invia", report_sent:"Segnalazione inviata. La esamineremo.", report_already:"Hai già segnalato", confirm_block:"Bloccare {name}? Non vedrete più percorsi e punti l’uno dell’altro e i follow verranno rimossi.", blocked_done:"Bloccato", blocked_list_title:"Utenti bloccati", blocked_none:"Nessun utente bloccato", unblocked_done:"Sbloccato",
   follow_sort_total:"Più mi piace (totale)", follow_sort_routes:"Più mi piace ai percorsi", follow_sort_points:"Più mi piace ai punti", follow_sort_updated:"Aggiornati di recente", follow_sort_name:"Nome", user_stats:"Percorsi {r} · Punti {p} · ❤️ {l}", nav_resumed:"Ripreso dal n. {n}", nav_from_start:"Dall’inizio", nav_set_next_confirm:"Rendere il n. {n} il prossimo punto?",
   style_marks_label:"Testi e icone", style_label_all:"Mostra tutto", style_label_names:"Solo luoghi, strade e stazioni", style_label_none:"Nascondi tutto",
@@ -2798,6 +2811,7 @@ it: {
 },
 id: {
   gps_waiting:'📡 Menunggu GPS', gps_error:'📡 GPS gagal', gps_accuracy:'📡 Akurasi ±{m}m',
+  no_fixed_points:"Tidak ada titik tetap",
   report_user:"Laporkan pengguna ini", report_content:"Laporkan", block_user:"Blokir", unblock_user:"Buka blokir", report_title:"Laporkan", report_reason_label:"Alasan", report_r_inappropriate:"Konten tidak pantas", report_r_personal:"Berisi data pribadi", report_r_spam:"Pelecehan atau spam", report_r_impersonation:"Peniruan identitas", report_r_other:"Lainnya", report_detail_ph:"Detail (opsional)", report_send:"Kirim", report_sent:"Laporan terkirim. Kami akan memeriksanya.", report_already:"Anda sudah melaporkannya", confirm_block:"Blokir {name}? Kalian tidak akan saling melihat rute dan titik tetap, dan ikutan akan dihapus.", blocked_done:"Diblokir", blocked_list_title:"Pengguna diblokir", blocked_none:"Tidak ada pengguna diblokir", unblocked_done:"Blokir dibuka",
   follow_sort_total:"Suka terbanyak (total)", follow_sort_routes:"Suka rute terbanyak", follow_sort_points:"Suka titik terbanyak", follow_sort_updated:"Terbaru diperbarui", follow_sort_name:"Nama", user_stats:"Rute {r} · Titik {p} · ❤️ {l}", nav_resumed:"Dilanjutkan dari no. {n}", nav_from_start:"Dari awal", nav_set_next_confirm:"Jadikan no. {n} titik berikutnya?",
   style_marks_label:"Teks & ikon", style_label_all:"Tampilkan semua", style_label_names:"Hanya nama tempat, jalan & stasiun", style_label_none:"Sembunyikan semua",
@@ -2861,6 +2875,7 @@ id: {
 },
 vi: {
   gps_waiting:'📡 Đang chờ GPS', gps_error:'📡 GPS lỗi', gps_accuracy:'📡 Độ chính xác ±{m}m',
+  no_fixed_points:"Không có điểm cố định",
   report_user:"Báo cáo người dùng này", report_content:"Báo cáo", block_user:"Chặn", unblock_user:"Bỏ chặn", report_title:"Báo cáo", report_reason_label:"Lý do", report_r_inappropriate:"Nội dung không phù hợp", report_r_personal:"Chứa thông tin cá nhân", report_r_spam:"Quấy rối hoặc spam", report_r_impersonation:"Mạo danh", report_r_other:"Khác", report_detail_ph:"Chi tiết (không bắt buộc)", report_send:"Gửi", report_sent:"Đã gửi báo cáo. Chúng tôi sẽ xem xét.", report_already:"Bạn đã báo cáo rồi", confirm_block:"Chặn {name}? Hai bên sẽ không thấy tuyến và điểm cố định của nhau, theo dõi cũng bị gỡ.", blocked_done:"Đã chặn", blocked_list_title:"Người đã chặn", blocked_none:"Không có ai bị chặn", unblocked_done:"Đã bỏ chặn",
   follow_sort_total:"Nhiều lượt thích nhất (tổng)", follow_sort_routes:"Tuyến được thích nhiều nhất", follow_sort_points:"Điểm được thích nhiều nhất", follow_sort_updated:"Cập nhật gần đây", follow_sort_name:"Tên", user_stats:"Tuyến {r} · Điểm {p} · ❤️ {l}", nav_resumed:"Tiếp tục từ số {n}", nav_from_start:"Từ đầu", nav_set_next_confirm:"Đặt số {n} làm điểm tiếp theo?",
   style_marks_label:"Chữ và biểu tượng", style_label_all:"Hiện tất cả", style_label_names:"Chỉ tên địa danh, đường và ga", style_label_none:"Ẩn tất cả",
@@ -7717,7 +7732,12 @@ function photoBadgeMarker(ll, ph, liftPx){
   const icon = L.divIcon({ html:`<div class="photo-badge"><img src="${ph.thumb}" loading="lazy" alt=""></div>`,
     iconSize:[48,48], iconAnchor:[24, 48 + liftPx], className:'' });
   const m = L.marker(ll, { icon, interactive:true, zIndexOffset:500 });
-  m.on('click', e=>{ L.DomEvent.stopPropagation(e); showInfoPopup(ll, ph.name||'', ph.memo||'', { thumb:ph.thumb, full:ph.full }); });
+  m.on('click', e=>{
+    L.DomEvent.stopPropagation(e);
+    // 編集中は、写真の下のピンを押したのと同じ（ルートのポイント・自分の固定ポイントの編集）
+    if(addMode && typeof ph.onEdit === 'function'){ ph.onEdit(); return; }
+    showInfoPopup(ll, ph.name||'', ph.memo||'', { thumb:ph.thumb, full:ph.full });
+  });
   return m;
 }
 // 今の状態から、出す写真を決めて地図に置く（状態が変わった時だけ作り直す）
@@ -7740,14 +7760,14 @@ function renderPhotoBadges(force){
     let show;
     if((playing || naving) && reachOn) show = idx <= reachIdx;
     else show = mode === 'route' || mode === 'all' || ph.pinned;
-    if(show) list.push({ ll:[p.lat,p.lng], ph, lift:40, key:'r'+idx+ph.thumb });
+    if(show) list.push({ ll:[p.lat,p.lng], ph: Object.assign({}, ph, { onEdit: ()=>selectRoutePoint(p, 'map') }), lift:40, key:'r'+idx+ph.thumb });
   });
   // ② 自分の固定ポイント（地図に⭐で出ているもの）
   savedPoints.forEach((sp, i)=>{
     if(!sp.photo_thumb_url) return;
     const mk = savedPointMarkers[i]; if(!mk || !map.hasLayer(mk)) return;
     if(mode === 'all' || sp.photo_pinned)
-      list.push({ ll:[sp.lat,sp.lng], ph:{ thumb:sp.photo_thumb_url, full:sp.photo_url, name:sp.name, memo:sp.memo }, lift:28, key:'s'+sp.id+sp.photo_thumb_url });
+      list.push({ ll:[sp.lat,sp.lng], ph:{ thumb:sp.photo_thumb_url, full:sp.photo_url, name:sp.name, memo:sp.memo, onEdit: ()=>openFixedPointEditModal(sp) }, lift:28, key:'s'+sp.id+sp.photo_thumb_url });
   });
   // ③ 他人のルート・固定ポイントを見ている時
   if(previewState && previewLayer){
@@ -9026,7 +9046,7 @@ function renderEveryoneTree(){
   };
   walk(null, 0);
   if(!evData.groups.length && !evData.items.length){
-    html += `<div style="text-align:center;padding:20px;color:#5e5e6b;font-size:12px;">${t('no_routes')}</div>`;
+    html += `<div style="text-align:center;padding:20px;color:#5e5e6b;font-size:12px;">${t(evKind==='point' ? 'no_fixed_points' : 'no_routes')}</div>`;
   }
   el.innerHTML = html;
 }
@@ -9142,6 +9162,7 @@ function showPreviewBar(){
 
 async function startPreview(state){
   previewState = state;
+  gpsInitialized = true;   // この後で現在地が取れても、地図を現在地へ動かさない（共有リンクから開いた時など）
   clearPreviewLayer();
   previewLayer = L.layerGroup().addTo(map);
   closeRouteList();
@@ -9156,6 +9177,13 @@ async function startPreview(state){
       lls.push([p.lat,p.lng]);
     });
     fitPointsAroundCenter(lls);
+    if(state.items.length === 1){
+      const p = state.items[0];
+      setTimeout(()=>{
+        flashMapPoint(p.lat, p.lng, pinColorOf(p));
+        showInfoPopup([p.lat,p.lng], p.name || '', p.memo || '', { thumb:p.photo_thumb_url, full:p.photo_url });
+      }, 350);
+    }
   } else {
     await loadPreviewPhotos(state.items);
     // 保存バーの「中の固定ポイントも保存」は、見てよい固定ポイントがある時だけ出す
