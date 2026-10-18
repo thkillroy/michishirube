@@ -1200,10 +1200,10 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
 .point-num.done { border-color:#343b48; color:#343b48; background:#0e1014; }
 
 .point-info { flex:1; min-width:0; cursor:pointer; }
-.point-name { font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#ccc; }
+.point-name { font-size:13px; font-weight:600; white-space:normal; overflow-wrap:anywhere; line-height:1.35; color:#ddd; }
 .point-row.current-row .point-name { font-size:16px; color:#ff9f1c; }
-.point-memo-label { font-size:10px; color:#ff9f1c; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.point-row.current-row .point-memo-label { font-size:12px; }
+.point-memo-label { font-size:12px; color:#ffb04a; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.45; margin-top:3px; }
+.point-row.current-row .point-memo-label { font-size:14px; }
 
 .point-del { background:#2a0000; border:1px solid #500; color:#ff6666; font-size:16px; font-weight:700; cursor:pointer; padding:6px 12px; border-radius:6px; flex-shrink:0; min-width:44px; min-height:36px; display:flex; align-items:center; justify-content:center; }
 .point-del:active { background:#4a0000; }
@@ -1227,7 +1227,7 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
   font-size:15px; outline:none; margin-bottom:10px; font-family:inherit;
 }
 #edit-popup input:focus, #edit-popup textarea:focus { border-color:#ff9f1c; }
-#edit-popup textarea { resize:none; height:64px; }
+#edit-popup textarea { resize:none; height:130px; line-height:1.5; }
 #edit-popup-title { font-size:14px; color:#ff9f1c; font-weight:700; margin-bottom:12px; }
 #edit-popup .ep-btns { display:flex; gap:8px; margin-top:10px; }
 #edit-popup .ep-btns button { flex:1; padding:11px 6px; border-radius:8px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
@@ -1244,6 +1244,7 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
 #modal input, #modal textarea, #modal select { width:100%; background:#08090d; border:1px solid #262b36; border-radius:8px; color:#e9e9ee; padding:10px 12px; font-size:14px; outline:none; margin-bottom:12px; font-family:inherit; }
 #modal input:focus, #modal textarea:focus, #modal select:focus { border-color:#ff9f1c; }
 #modal textarea { resize:none; height:60px; }
+#modal #modal-memo-input { height:130px; line-height:1.5; }
 #modal select option { background:#12141a; }
 #modal-btns { display:flex; gap:8px; }
 #modal-btns .btn { flex:1; padding:12px; font-size:14px; }
@@ -1350,8 +1351,8 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
   #points-wrap { max-height:none; overflow:visible; flex:0 0 auto; }
   .point-row { padding:6px 8px; gap:6px; }
   .point-row.current-row { padding:9px 8px; }
-  .point-name { font-size:11px; }
-  .point-row.current-row .point-name { font-size:13px; }
+  .point-name { font-size:12px; }
+  .point-row.current-row .point-name { font-size:14px; }
   .point-num { width:22px; height:22px; font-size:10px; }
   .point-row.current-row .point-num { width:28px; height:28px; font-size:12px; }
   .point-del { min-width:32px; min-height:28px; padding:3px 7px; font-size:13px; }
@@ -1366,11 +1367,15 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
   #controls { flex-direction:row; align-items:center; padding:8px 16px; gap:8px; }
   #search-row { flex:1; }
   #btn-row { flex-shrink:0; flex-wrap:nowrap; }
-  #points-wrap { max-height:none; height:160px; display:flex; flex-direction:row; overflow-x:auto; overflow-y:hidden; border-top:1px solid #181b23; align-items:stretch; }
+  #points-wrap { max-height:none; height:220px; display:flex; flex-direction:row; overflow-x:auto; overflow-y:hidden; border-top:1px solid #181b23; align-items:stretch; }
   #points-wrap::-webkit-scrollbar { height:3px; }
-  .point-row { flex-direction:column; align-items:flex-start; min-width:160px; max-width:160px; border-bottom:none; border-right:1px solid #12141a; padding:10px 12px; gap:4px; }
-  .point-row.current-row { min-width:200px; max-width:200px; padding:14px 12px; border-left:none; border-top:3px solid #ff9f1c; }
-  .point-name { white-space:normal; font-size:11px; }
+  .point-row { flex-direction:column; align-items:flex-start; min-width:210px; max-width:210px; border-bottom:none; border-right:1px solid #12141a; padding:10px 12px; gap:4px; }
+  .point-row.current-row { min-width:240px; max-width:240px; padding:14px 12px; border-left:none; border-top:3px solid #ff9f1c; }
+  .point-name { font-size:13px; }
+  .point-info { align-self:stretch; width:100%; }
+  .point-memo-label { max-height:calc(1.45em * 4); overflow-y:auto; }
+  .point-memo-label::-webkit-scrollbar { width:3px; }
+  .point-memo-label::-webkit-scrollbar-thumb { background:#343b48; }
   .insert-row { flex-direction:column; min-width:32px; max-width:32px; padding:8px 4px; border-right:1px solid #12141a; }
   .insert-btn { writing-mode:vertical-rl; padding:8px 2px; font-size:12px; width:auto; height:100%; }
   .empty-msg { min-width:300px; }
@@ -5299,8 +5304,8 @@ function renderList(){
       ${starPrefix}
       <div class="point-num ${numClass}" onclick="${numOnclick}" style="cursor:pointer;">${i+1}</div>
       <div class="point-info" onclick="focusPoint(${p.id})">
-        <div class="point-name">${displayName}</div>
-        ${p.memo?`<div class="point-memo-label">📝 ${p.memo}</div>`:''}
+        <div class="point-name">${fEsc(displayName)}</div>
+        ${p.memo?`<div class="point-memo-label">${fEsc(p.memo)}</div>`:''}
         ${segDist?`<div style="font-size:13px;color:#7e7e8b;margin-top:2px;">→ ${segDist}</div>`:''}
       </div>
       ${addMode?`<button class="point-del" onclick="deletePoint(${p.id})">✕</button>`:''}
@@ -7102,6 +7107,30 @@ let followTab = 'search';
 let followSearchResults = [];
 let _followUserId = null;  // 最後に読み込んだ時のログインユーザー
 
+// メモ欄：中身の行数に合わせて高さを変える（最低5行・最大12行、それ以上は中でスクロール）
+function fitMemoBox(el){
+  if(!el || !el.getClientRects().length) return;
+  const lh = parseFloat(getComputedStyle(el).lineHeight) || 22;
+  const pad = el.offsetHeight - el.clientHeight + 18;
+  const min = lh * 5 + pad, max = Math.min(lh * 12 + pad, window.innerHeight * 0.45);
+  el.style.height = 'auto';
+  el.style.height = Math.round(Math.min(Math.max(el.scrollHeight + 2, min), max)) + 'px';
+}
+(function(){
+  const setup = () => ['edit-popup-memo','modal-memo-input'].forEach(id => {
+    const el = document.getElementById(id); if(!el || el._fit) return; el._fit = true;
+    el.addEventListener('input', () => fitMemoBox(el));
+    // 中身を入れた時（画面を開いた時）にも合わせる
+    const d = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    Object.defineProperty(el, 'value', { configurable:true,
+      get(){ return d.get.call(this); },
+      set(v){ d.set.call(this, v); requestAnimationFrame(() => fitMemoBox(el)); } });
+    // 隠れていた画面が出た時・幅が変わった時
+    let w = -1;
+    new ResizeObserver(es => { const nw = Math.round(es[0].contentRect.width); if(nw && nw !== w){ w = nw; fitMemoBox(el); } }).observe(el);
+  });
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setup); else setup();
+})();
 function fEsc(str){
   return String(str==null?'':str).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -7225,7 +7254,7 @@ function outgoingButton(uid){
 function followRow(uid, buttons){
   const name = usernameCache[uid] || '—';
   const st = userStats[uid];
-  const sub = st ? `<div style="font-size:10px;color:#7e7e8b;margin-top:2px;white-space:normal;line-height:1.4;">${t('user_stats', { r: st.routes, p: st.points, l: st.total })}</div>` : '';
+  const sub = st ? `<div style="font-size:12px;color:#9a9aa6;margin-top:3px;line-height:1.5;">${t('user_stats', { r: st.routes, p: st.points, l: st.total }).split(' · ').map(x=>`<div style="white-space:nowrap;">${fEsc(x)}</div>`).join('')}</div>` : '';
   return `<div class="follow-row"><div class="follow-name" style="display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="openUserPage('${uid}')">${userAvatarHTML(uid,26)}<div style="min-width:0;"><div style="overflow:hidden;text-overflow:ellipsis;">${fEsc(name)}</div>${sub}</div></div>${buttons}</div>`;
 }
 
