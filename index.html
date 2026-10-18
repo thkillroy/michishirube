@@ -187,6 +187,7 @@
       this._g = g;
       this._GMap = Map; this._RT = RenderingType;
       g.addListener('click', e => {
+        if(Date.now() - (GM.markerTapAt || 0) < 500) return;   // ピンを押した直後の地図のクリックは無視（ポイントを作らない）
         if(GM.iwOpen){ GM.iw.close(); GM.iwOpen = false; this.fire('popupclose'); }   // Leaflet と同じく、地図を押すと吹き出しを閉じる（閉じたことも知らせる）
         this.fire('click', { latlng: e.latLng ? new LatLng(e.latLng.lat(), e.latLng.lng()) : null, originalEvent: e.domEvent });
       });
@@ -230,7 +231,7 @@
         if(this._custom){ ml.dragPan.disable(); ml.touchZoomRotate.disable(); }
         ml.keyboard.disableRotation();
         this._ml = ml;
-        ml.on('click', e => this.fire('click', { latlng: new LatLng(e.lngLat.lat, e.lngLat.lng), originalEvent: e.originalEvent }));
+        ml.on('click', e => (Date.now() - (GM.markerTapAt || 0) < 500) ? null : this.fire('click', { latlng: new LatLng(e.lngLat.lat, e.lngLat.lng), originalEvent: e.originalEvent }));
         ml.on('dragstart', () => this.fire('dragstart'));
         ml.on('dragend', () => this.fire('dragend'));
         ml.on('rotate', () => this.fire('rotate'));
@@ -571,7 +572,7 @@
           const d = down; down = null;
           if(!d || !this._clickable()) return;
           if(Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > 8 || Date.now() - d.t > 600) return;
-          ev.stopPropagation();
+          // 「離した」は地図にも届ける（止めると Google 側のドラッグが終わらず、ピンをつかんだままになる）
           this._fireTap(ev);
         });
         wrap.addEventListener('click', ev => { if(this._clickable()){ ev.stopPropagation(); this._fireTap(ev); } });
@@ -592,7 +593,7 @@
     _fireTap(de){
       const now = Date.now();
       if(now - (this._tapAt || 0) < 400 || now - (this._dragEndAt || 0) < 300) return;   // 二重・ドラッグ直後は無視
-      this._tapAt = now; this._onClick(de);
+      this._tapAt = now; GM.markerTapAt = now; this._onClick(de);
     }
     _onClick(de){
       this.fire('click', { latlng: this._ll, originalEvent: de });
@@ -1367,13 +1368,16 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
   #controls { flex-direction:row; align-items:center; padding:8px 16px; gap:8px; }
   #search-row { flex:1; }
   #btn-row { flex-shrink:0; flex-wrap:nowrap; }
-  #points-wrap { max-height:none; height:220px; display:flex; flex-direction:row; overflow-x:auto; overflow-y:hidden; border-top:1px solid #181b23; align-items:stretch; }
+  #points-wrap { max-height:none; height:160px; display:flex; flex-direction:row; overflow-x:auto; overflow-y:hidden; border-top:1px solid #181b23; align-items:stretch; }
   #points-wrap::-webkit-scrollbar { height:3px; }
-  .point-row { flex-direction:column; align-items:flex-start; min-width:210px; max-width:210px; border-bottom:none; border-right:1px solid #12141a; padding:10px 12px; gap:4px; }
-  .point-row.current-row { min-width:240px; max-width:240px; padding:14px 12px; border-left:none; border-top:3px solid #ff9f1c; }
+  .point-row { position:relative; flex-direction:column; align-items:flex-start; min-width:160px; max-width:160px; border-bottom:none; border-right:1px solid #12141a; padding:10px 12px; gap:4px; }
+  .point-row.current-row { min-width:200px; max-width:200px; padding:14px 12px; border-left:none; border-top:3px solid #ff9f1c; }
   .point-name { font-size:13px; }
-  .point-info { align-self:stretch; width:100%; }
-  .point-memo-label { max-height:calc(1.45em * 4); overflow-y:auto; }
+  .point-info { align-self:stretch; width:100%; flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
+  .point-info > div { flex-shrink:0; }
+  .point-info > .point-memo-label { flex:0 1 auto; min-height:0; overflow-y:auto; }
+  .point-del { position:absolute; top:8px; right:8px; min-width:30px; min-height:26px; padding:2px 7px; font-size:13px; }
+  .seg-row { align-items:flex-end; padding-bottom:10px; }
   .point-memo-label::-webkit-scrollbar { width:3px; }
   .point-memo-label::-webkit-scrollbar-thumb { background:#343b48; }
   .insert-row { flex-direction:column; min-width:32px; max-width:32px; padding:8px 4px; border-right:1px solid #12141a; }
