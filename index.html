@@ -572,8 +572,9 @@
           const d = down; down = null;
           if(!d || !this._clickable()) return;
           if(Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > 8 || Date.now() - d.t > 600) return;
-          // 「離した」は地図にも届ける（止めると Google 側のドラッグが終わらず、ピンをつかんだままになる）
-          this._fireTap(ev);
+          // 「離した」は地図にも届ける。編集の画面を開くのは、離した操作（mouseup・click）が全部終わった後にする
+          // （先に画面を出すと、続く mouseup が画面の方に行き、Google 側のドラッグが終わらずピンをつかんだままになる）
+          setTimeout(() => this._fireTap(ev), 0);
         });
         wrap.addEventListener('click', ev => { if(this._clickable()){ ev.stopPropagation(); this._fireTap(ev); } });
       }
@@ -593,7 +594,10 @@
     _fireTap(de){
       const now = Date.now();
       if(now - (this._tapAt || 0) < 400 || now - (this._dragEndAt || 0) < 300) return;   // 二重・ドラッグ直後は無視
-      this._tapAt = now; GM.markerTapAt = now; this._onClick(de);
+      this._tapAt = now; GM.markerTapAt = now;
+      // 念のため、押したピンの「つかみ」を一度外してから戻す（Google 側のドラッグの途中の状態を消す）
+      if(this._gm && this._drag){ this._gm.gmpDraggable = false; requestAnimationFrame(() => { if(this._gm) this._gm.gmpDraggable = this._drag; }); }
+      this._onClick(de);
     }
     _onClick(de){
       this.fire('click', { latlng: this._ll, originalEvent: de });
@@ -1295,6 +1299,8 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
 .ie-linked { font-size:14px; color:#e9e9ee; display:flex; align-items:center; gap:6px; margin-bottom:6px; }
 .seg-chip { display:inline-flex; align-items:center; gap:4px; font-size:11px; color:#9a9aa6; background:#14161d; border:1px solid #2a2a2a; border-radius:10px; padding:2px 8px; cursor:pointer; }
 .seg-dash { flex:1; height:3px; border-radius:2px; }
+.seg-in-card { display:none; align-items:center; gap:6px; margin-top:auto; padding-top:4px; font-size:13px; color:#7e7e8b; white-space:nowrap; }
+.seg-in-card .seg-dash { flex:0 0 22px; }
 .vis-btn.active { background:#ff9f1c; border-color:#ff9f1c; color:#000; }
 .follow-tab { flex:1; padding:7px 2px; background:#181b23; border:1px solid #262b36; color:#9a9aa6; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .follow-tab.active { background:#ff9f1c; border-color:#ff9f1c; color:#000; }
@@ -1377,7 +1383,9 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
   .point-info > div { flex-shrink:0; }
   .point-info > .point-memo-label { flex:0 1 auto; min-height:0; overflow-y:auto; }
   .point-del { position:absolute; top:8px; right:8px; min-width:30px; min-height:26px; padding:2px 7px; font-size:13px; }
-  .seg-row { align-items:flex-end; padding-bottom:10px; }
+  .seg-row { display:none; }
+  .point-info > .point-dist { display:none; }
+  .point-info > .seg-in-card { display:flex; }
   .point-memo-label::-webkit-scrollbar { width:3px; }
   .point-memo-label::-webkit-scrollbar-thumb { background:#343b48; }
   .insert-row { flex-direction:column; min-width:32px; max-width:32px; padding:8px 4px; border-right:1px solid #12141a; }
@@ -5304,30 +5312,36 @@ function renderList(){
     }
 
     const segDist = segmentDistances[i] != null ? formatDist(segmentDistances[i]) : '';
-    html+=`<div class="point-row ${rowClass}">
-      ${starPrefix}
-      <div class="point-num ${numClass}" onclick="${numOnclick}" style="cursor:pointer;">${i+1}</div>
-      <div class="point-info" onclick="focusPoint(${p.id})">
-        <div class="point-name">${fEsc(displayName)}</div>
-        ${p.memo?`<div class="point-memo-label">${fEsc(p.memo)}</div>`:''}
-        ${segDist?`<div style="font-size:13px;color:#7e7e8b;margin-top:2px;">→ ${segDist}</div>`:''}
-      </div>
-      ${addMode?`<button class="point-del" onclick="deletePoint(${p.id})">✕</button>`:''}
-    </div>`;
-
-    // ポイントとポイントの間に挿入ボタン（ポイントが2つ以上の時のみ）
+    // 次の区間（PCではカードの中、メモの下に出す）
+    let segHTML = '', segInCard = '';
     if(i<points.length-1){
       const m = segModeOf(i), c = segColorOf(i);
       const dv = segStyleOf(i);
       const dashStyle = dv
         ? `background:repeating-linear-gradient(90deg, ${c} 0 ${parseInt(dv)}px, transparent ${parseInt(dv)}px ${parseInt(dv)+6}px);`
         : `background:${c};`;
-      html+=`<div class="seg-row">
+      const warn = p.segWarn ? `<span title="${fEsc(t('seg_warn_tip'))}" onclick="event.stopPropagation();alert(t('seg_warn_tip'))" style="flex:0 0 auto;font-size:15px;cursor:pointer;">⚠️</span>` : '';
+      segHTML = `<div class="seg-row">
         <span class="seg-chip">${SEG_ICONS[m]}</span>
         <span class="seg-dash" style="${dashStyle}"></span>
-        ${p.segWarn ? `<span title="${fEsc(t('seg_warn_tip'))}" onclick="alert(t('seg_warn_tip'))" style="flex:0 0 auto;font-size:15px;cursor:pointer;">⚠️</span>` : ''}
+        ${warn}
       </div>`;
+      segInCard = `<div class="seg-in-card"><span class="seg-chip">${SEG_ICONS[m]}</span><span class="seg-dash" style="${dashStyle}"></span>${segDist ? `<span>→ ${segDist}</span>` : ''}${warn}</div>`;
     }
+    html+=`<div class="point-row ${rowClass}">
+      ${starPrefix}
+      <div class="point-num ${numClass}" onclick="${numOnclick}" style="cursor:pointer;">${i+1}</div>
+      <div class="point-info" onclick="focusPoint(${p.id})">
+        <div class="point-name">${fEsc(displayName)}</div>
+        ${p.memo?`<div class="point-memo-label">${fEsc(p.memo)}</div>`:''}
+        ${segDist?`<div class="point-dist" style="font-size:13px;color:#7e7e8b;margin-top:2px;">→ ${segDist}</div>`:''}
+        ${segInCard}
+      </div>
+      ${addMode?`<button class="point-del" onclick="deletePoint(${p.id})">✕</button>`:''}
+    </div>`;
+
+    // ポイントとポイントの間：区間の行（PCでは隠し、カードの中に出す）
+    html+=segHTML;
     if(addMode && i<points.length-1 && points.length>=2){
       html+=`<div class="insert-row"><button class="insert-btn" data-after="${i}" onclick="startInsertAt(${i})">＋</button></div>`;
     }
