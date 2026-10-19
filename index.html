@@ -4893,6 +4893,174 @@ async function recDirPermission(){
   }catch(e){ return 'denied'; }
 }
 
+// ===== PC版の録画：編集ソフトで軽く・きれいに扱えるMP4を自前で作る =====
+// ブラウザ標準の録画（MediaRecorder）は、細切れ形式・コマの間隔がバラバラ・区切りのコマが少ないMP4になり、
+// DaVinci Resolve で置けない／重い。そこで、画面のコマを1枚ずつ受け取り、
+//  ・1秒30コマちょうど（足りない所は前のコマを繰り返す）
+//  ・1秒ごとに区切りのコマ（キーフレーム）
+//  ・H.264 High（きれいに圧縮できる種類）
+// で圧縮し、普通の形のMP4（目次が先頭）に詰めて保存する。
+const WC_FPS = 30;
+function wcSupported(){
+  return typeof window.VideoEncoder === 'function' && typeof window.VideoFrame === 'function' && typeof window.MediaStreamTrackProcessor === 'function';
+}
+async function wcPickConfig(w, h){
+  // 画面の大きさに合わせた量（2008×2160 で約16Mbps）。少なすぎると汚く、多すぎると重い
+  const bitrate = Math.round(Math.min(40e6, Math.max(8e6, w * h * WC_FPS * 0.12)));
+  for(const codec of ['avc1.640033','avc1.640034','avc1.64002A','avc1.4D0033','avc1.42E033']){
+    const cfg = { codec, width:w, height:h, bitrate, framerate:WC_FPS, avc:{ format:'avc' }, latencyMode:'quality', bitrateMode:'variable' };
+    try{ const r = await VideoEncoder.isConfigSupported(cfg); if(r && r.supported) return cfg; }catch(e){}
+  }
+  return null;
+}
+class WcRecorder {
+  constructor(stream){
+    this.stream = stream; this.track = stream.getVideoTracks()[0];
+    this.state = 'inactive'; this.onstop = null; this.mimeType = 'video/mp4';
+    this.samples = []; this.desc = null; this.err = null; this.enc = null;
+    this.next = 0; this.last = null; this.p0 = 0; this.needKey = true;
+  }
+  start(){
+    if(this.state !== 'inactive') return;
+    this.state = 'recording';
+    this.reader = new MediaStreamTrackProcessor({ track:this.track }).readable.getReader();
+    this._loop();
+  }
+  async _loop(){
+    try{
+      while(this.state === 'recording'){
+        const { value:f, done } = await this.reader.read();
+        if(done || !f) break;
+        if(this.state !== 'recording'){ f.close(); break; }
+        await this._take(f);
+      }
+    }catch(e){ if(this.state === 'recording'){ this.err = e; console.warn('録画のコマ受け取り失敗', e); } }
+  }
+  async _setup(f){
+    const w = f.displayWidth & ~1, h = f.displayHeight & ~1;   // 縦横は偶数にする
+    const cfg = await wcPickConfig(w, h);
+    if(!cfg) throw new Error('H.264 encoder not available');
+    this.w = w; this.h = h;
+    this.enc = new VideoEncoder({
+      output: (chunk, meta) => {
+        const d = meta && meta.decoderConfig && meta.decoderConfig.description;
+        if(d && !this.desc) this.desc = d instanceof ArrayBuffer ? new Uint8Array(d.slice(0)) : new Uint8Array(d.buffer, d.byteOffset, d.byteLength).slice();
+        const b = new Uint8Array(chunk.byteLength); chunk.copyTo(b);
+        this.samples.push({ data:b, key: chunk.type === 'key', ts: chunk.timestamp });
+      },
+      error: e => { this.err = e; console.warn('録画の圧縮失敗', e); }
+    });
+    this.enc.configure(cfg);
+  }
+  _enc(frame, i){
+    if(!this.enc || this.enc.state !== 'configured') return;
+    if(this.enc.encodeQueueSize > 45){ if(i % WC_FPS === 0) this.needKey = true; return; }   // 追いつかない時は1コマ飛ばす
+    const init = { timestamp: Math.round(i * 1e6 / WC_FPS), duration: Math.round(1e6 / WC_FPS) };
+    const vr = frame.visibleRect;
+    if(vr && vr.width >= this.w && vr.height >= this.h && (vr.width !== this.w || vr.height !== this.h)) init.visibleRect = { x:vr.x, y:vr.y, width:this.w, height:this.h };
+    let vf = null;
+    try{
+      vf = new VideoFrame(frame, init);
+      const key = this.needKey || i % WC_FPS === 0;
+      this.enc.encode(vf, { keyFrame:key });
+      if(key) this.needKey = false;
+    }catch(e){ console.warn('録画の1コマ失敗', e); }
+    finally{ if(vf) vf.close(); }
+  }
+  async _take(f){
+    if(!this.enc){
+      try{ await this._setup(f); }catch(e){ this.err = e; f.close(); this.state = 'inactive'; return; }
+      this.p0 = performance.now();
+    }
+    // 録画開始からの経過時間で、何コマ目に当たるかを決める（画面が止まっていてコマが来ない間は、前のコマを繰り返す）
+    const idx = Math.round((performance.now() - this.p0) * WC_FPS / 1000);
+    if(idx < this.next){ f.close(); return; }          // 同じコマの枠に2枚来たら後の方は捨てる
+    while(this.last && this.next < idx) this._enc(this.last, this.next++);
+    this._enc(f, this.next++);
+    if(this.last) this.last.close();
+    this.last = f;
+  }
+  async stop(){
+    if(this.state !== 'recording') return;
+    this.state = 'inactive';
+    try{ await this.reader.cancel(); }catch(e){}
+    let blob = null;
+    try{
+      if(this.enc && this.last){
+        // 止めた時刻まで、最後のコマを繰り返して埋める
+        const endIdx = Math.round((performance.now() - this.p0) * WC_FPS / 1000);
+        while(this.next <= endIdx) this._enc(this.last, this.next++);
+      }
+      if(this.last){ this.last.close(); this.last = null; }
+      if(this.enc){ await this.enc.flush(); this.enc.close(); }
+      if(this.samples.length && this.desc) blob = mp4Mux(this.samples, this.desc, this.w, this.h, WC_FPS);
+    }catch(e){ this.err = e; console.warn('録画の仕上げ失敗', e); }
+    this.blob = blob;
+    if(this.onstop) this.onstop();
+  }
+}
+
+// ----- 普通の形のMP4に詰める（映像1本・目次を先頭に置く） -----
+function mp4Mux(samples, avcC, w, h, fps){
+  const TS = fps * 1000;                 // 1秒を 30000 に分ける
+  const n = samples.length;
+  const toTS = us => Math.round(us * TS / 1e6);
+  const durs = new Array(n);
+  for(let i = 0; i < n; i++) durs[i] = i < n - 1 ? Math.max(1, toTS(samples[i + 1].ts) - toTS(samples[i].ts)) : 1000;
+  const total = durs.reduce((a, b) => a + b, 0);
+  const str = s => { const a = new Uint8Array(s.length); for(let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; };
+  const be = (vals, bytes) => {
+    const a = new Uint8Array(vals.length * bytes), dv = new DataView(a.buffer);
+    vals.forEach((v, i) => {
+      if(bytes === 1) dv.setUint8(i, v); else if(bytes === 2) dv.setUint16(i * 2, v); else if(bytes === 4) dv.setUint32(i * 4, v >>> 0);
+      else { dv.setUint32(i * 8, Math.floor(v / 4294967296)); dv.setUint32(i * 8 + 4, v >>> 0); }
+    });
+    return a;
+  };
+  const box = (type, ...parts) => {
+    let len = 8; parts.forEach(p => len += p.length);
+    const b = new Uint8Array(len); new DataView(b.buffer).setUint32(0, len); b.set(str(type), 4);
+    let o = 8; parts.forEach(p => { b.set(p, o); o += p.length; });
+    return b;
+  };
+  const full = (type, v, flags, ...parts) => box(type, new Uint8Array([v, (flags >> 16) & 255, (flags >> 8) & 255, flags & 255]), ...parts);
+  const matrix = be([0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000], 4);
+  const movieDur = Math.round(total * 1000 / TS);
+  const ftyp = box('ftyp', str('isom'), be([512], 4), str('isomiso2avc1mp41'));
+  const build = offsets => {
+    const mvhd = full('mvhd', 0, 0, be([0, 0, 1000, movieDur, 0x00010000], 4), be([0x0100], 2), new Uint8Array(10), matrix, new Uint8Array(24), be([2], 4));
+    const tkhd = full('tkhd', 0, 3, be([0, 0, 1, 0, movieDur, 0, 0], 4), be([0, 0, 0, 0], 2), matrix, be([w * 65536, h * 65536], 4));
+    const mdhd = full('mdhd', 0, 0, be([0, 0, TS, total], 4), be([0x55c4, 0], 2));
+    const hdlr = full('hdlr', 0, 0, be([0], 4), str('vide'), new Uint8Array(12), str('VideoHandler\0'));
+    const vmhd = full('vmhd', 0, 1, new Uint8Array(8));
+    const dinf = box('dinf', full('dref', 0, 0, be([1], 4), full('url ', 0, 1)));
+    const avc1 = box('avc1', new Uint8Array(6), be([1], 2), new Uint8Array(16), be([w, h], 2), be([0x00480000, 0x00480000, 0], 4), be([1], 2),
+      new Uint8Array(32), be([0x0018, 0xffff], 2), box('avcC', avcC), box('pasp', be([1, 1], 4)));
+    const stsd = full('stsd', 0, 0, be([1], 4), avc1);
+    // コマの長さ（同じ長さが続く所はまとめる）
+    const runs = [];
+    durs.forEach(d => { const r = runs[runs.length - 1]; if(r && r[1] === d) r[0]++; else runs.push([1, d]); });
+    const stts = full('stts', 0, 0, be([runs.length].concat(...runs), 4));
+    const keys = []; samples.forEach((s, i) => { if(s.key) keys.push(i + 1); });
+    const stss = full('stss', 0, 0, be([keys.length].concat(keys), 4));
+    const stsc = full('stsc', 0, 0, be([1, 1, 1, 1], 4));
+    const stsz = full('stsz', 0, 0, be([0, n].concat(samples.map(s => s.data.length)), 4));
+    const co64 = full('co64', 0, 0, be([n], 4), be(offsets, 8));
+    const stbl = box('stbl', stsd, stts, stss, stsc, stsz, co64);
+    const minf = box('minf', vmhd, dinf, stbl);
+    const trak = box('trak', tkhd, box('mdia', mdhd, hdlr, minf));
+    return box('moov', mvhd, trak);
+  };
+  const moovSize = build(new Array(n).fill(0)).length;
+  let off = ftyp.length + moovSize + 16;
+  const offsets = samples.map(s => { const o = off; off += s.data.length; return o; });
+  const moov = build(offsets);
+  const mdatLen = 16 + (off - (ftyp.length + moovSize + 16));
+  const mdatHead = new Uint8Array(16); const dv = new DataView(mdatHead.buffer);
+  dv.setUint32(0, 1); mdatHead.set(str('mdat'), 4); dv.setUint32(8, Math.floor(mdatLen / 4294967296)); dv.setUint32(12, mdatLen >>> 0);
+  return new Blob([ftyp, moov, mdatHead].concat(samples.map(s => s.data)), { type:'video/mp4' });
+}
+
 async function startWebRecording(){
   // ブラウザが「どの画面を共有するか」を聞いてくる（このタブを選ぶ）
   recStream = await navigator.mediaDevices.getDisplayMedia({
@@ -4904,6 +5072,10 @@ async function startWebRecording(){
     if(recActive) exitRecMode();
     else if(recArmed === 'web'){ recRecorder = null; recStream = null; setRecArmed(null); }
   });
+  recChunks = [];
+  // 使えるブラウザ（Chrome・Edge）は、編集ソフト向けのMP4を自前で作る
+  if(wcSupported()){ recRecorder = new WcRecorder(recStream); recMime = 'video/mp4'; return; }
+  // 使えないブラウザは、今まで通りブラウザ標準の録画
   const types = ['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
   recMime = types.find(x=>MediaRecorder.isTypeSupported(x)) || '';
   recRecorder = new MediaRecorder(recStream, recMime ? { mimeType:recMime, videoBitsPerSecond:8000000 } : undefined);
@@ -5042,7 +5214,10 @@ function exitRecMode(){
       recRecorder = null; recStream = null; recActive = false;
       rec.onstop = ()=>{
         if(stream) stream.getTracks().forEach(tr=>tr.stop());
-        if(recChunks.length) saveRecording(new Blob(recChunks, { type:recMime }), perm);
+        if(rec instanceof WcRecorder){
+          if(rec.blob) saveRecording(rec.blob, perm);
+          else alert(t('rec_save_fail'));
+        } else if(recChunks.length) saveRecording(new Blob(recChunks, { type:recMime }), perm);
         recChunks = [];
       };
       rec.stop();
