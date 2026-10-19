@@ -4899,15 +4899,17 @@ async function recDirPermission(){
 //  ・1秒30コマちょうど（足りない所は前のコマを繰り返す）
 //  ・1秒ごとに区切りのコマ（キーフレーム）
 //  ・H.264 High（きれいに圧縮できる種類）
+//  ・大きさは縦横とも 1920×1080 の中に収める（画面の縦横の比はそのまま）。SNS・スマホ・編集ソフトが一番楽に扱える大きさ
+//  ・H.264 High レベル4.0（ほぼ全ての機器・SNS・編集ソフトが読める組み合わせ）、色の情報（BT.709）も書き込む
 // で圧縮し、普通の形のMP4（目次が先頭）に詰めて保存する。
 const WC_FPS = 30;
 function wcSupported(){
   return typeof window.VideoEncoder === 'function' && typeof window.VideoFrame === 'function' && typeof window.MediaStreamTrackProcessor === 'function';
 }
 async function wcPickConfig(w, h){
-  // 画面の大きさに合わせた量（2008×2160 で約16Mbps）。少なすぎると汚く、多すぎると重い
-  const bitrate = Math.round(Math.min(40e6, Math.max(8e6, w * h * WC_FPS * 0.12)));
-  for(const codec of ['avc1.640033','avc1.640034','avc1.64002A','avc1.4D0033','avc1.42E033']){
+  // 大きさに合わせた量（1080×1350 で約8.8Mbps。YouTube の1080p30の目安8Mbpsと同じくらい）
+  const bitrate = Math.round(Math.min(12e6, Math.max(6e6, w * h * WC_FPS * 0.2)));
+  for(const codec of ['avc1.640028','avc1.4D0028','avc1.42E028']){
     const cfg = { codec, width:w, height:h, bitrate, framerate:WC_FPS, avc:{ format:'avc' }, latencyMode:'quality', bitrateMode:'variable' };
     try{ const r = await VideoEncoder.isConfigSupported(cfg); if(r && r.supported) return cfg; }catch(e){}
   }
@@ -4937,7 +4939,13 @@ class WcRecorder {
     }catch(e){ if(this.state === 'recording'){ this.err = e; console.warn('録画のコマ受け取り失敗', e); } }
   }
   async _setup(f){
-    const w = f.displayWidth & ~1, h = f.displayHeight & ~1;   // 縦横は偶数にする
+    // 縦横とも 1920×1080 の中に収める（比はそのまま・偶数）
+    const sw = f.displayWidth, sh = f.displayHeight;
+    const sc = Math.min(1, 1920 / Math.max(sw, sh), 1080 / Math.min(sw, sh));
+    const w = Math.max(2, Math.round(sw * sc / 2) * 2), h = Math.max(2, Math.round(sh * sc / 2) * 2);
+    this.cv = new OffscreenCanvas(w, h);
+    this.cx = this.cv.getContext('2d', { alpha:false });
+    this.cx.imageSmoothingEnabled = true; this.cx.imageSmoothingQuality = 'high';
     const cfg = await wcPickConfig(w, h);
     if(!cfg) throw new Error('H.264 encoder not available');
     this.w = w; this.h = h;
@@ -4945,6 +4953,7 @@ class WcRecorder {
       output: (chunk, meta) => {
         const d = meta && meta.decoderConfig && meta.decoderConfig.description;
         if(d && !this.desc) this.desc = d instanceof ArrayBuffer ? new Uint8Array(d.slice(0)) : new Uint8Array(d.buffer, d.byteOffset, d.byteLength).slice();
+        if(meta && meta.decoderConfig && meta.decoderConfig.colorSpace && !this.color) this.color = meta.decoderConfig.colorSpace;
         const b = new Uint8Array(chunk.byteLength); chunk.copyTo(b);
         this.samples.push({ data:b, key: chunk.type === 'key', ts: chunk.timestamp });
       },
@@ -4956,11 +4965,10 @@ class WcRecorder {
     if(!this.enc || this.enc.state !== 'configured') return;
     if(this.enc.encodeQueueSize > 45){ if(i % WC_FPS === 0) this.needKey = true; return; }   // 追いつかない時は1コマ飛ばす
     const init = { timestamp: Math.round(i * 1e6 / WC_FPS), duration: Math.round(1e6 / WC_FPS) };
-    const vr = frame.visibleRect;
-    if(vr && vr.width >= this.w && vr.height >= this.h && (vr.width !== this.w || vr.height !== this.h)) init.visibleRect = { x:vr.x, y:vr.y, width:this.w, height:this.h };
     let vf = null;
     try{
-      vf = new VideoFrame(frame, init);
+      this.cx.drawImage(frame, 0, 0, this.w, this.h);   // 決めた大きさに縮める
+      vf = new VideoFrame(this.cv, init);
       const key = this.needKey || i % WC_FPS === 0;
       this.enc.encode(vf, { keyFrame:key });
       if(key) this.needKey = false;
@@ -4993,7 +5001,7 @@ class WcRecorder {
       }
       if(this.last){ this.last.close(); this.last = null; }
       if(this.enc){ await this.enc.flush(); this.enc.close(); }
-      if(this.samples.length && this.desc) blob = mp4Mux(this.samples, this.desc, this.w, this.h, WC_FPS);
+      if(this.samples.length && this.desc) blob = mp4Mux(this.samples, this.desc, this.w, this.h, WC_FPS, this.color);
     }catch(e){ this.err = e; console.warn('録画の仕上げ失敗', e); }
     this.blob = blob;
     if(this.onstop) this.onstop();
@@ -5001,7 +5009,7 @@ class WcRecorder {
 }
 
 // ----- 普通の形のMP4に詰める（映像1本・目次を先頭に置く） -----
-function mp4Mux(samples, avcC, w, h, fps){
+function mp4Mux(samples, avcC, w, h, fps, color){
   const TS = fps * 1000;                 // 1秒を 30000 に分ける
   const n = samples.length;
   const toTS = us => Math.round(us * TS / 1e6);
@@ -5027,6 +5035,10 @@ function mp4Mux(samples, avcC, w, h, fps){
   const matrix = be([0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000], 4);
   const movieDur = Math.round(total * 1000 / TS);
   const ftyp = box('ftyp', str('isom'), be([512], 4), str('isomiso2avc1mp41'));
+  // 色の情報（編集ソフト・SNSで色がずれないように）。原色と明るさの特性は BT.709、変換の式と範囲は圧縮した時の値
+  const MX = { rgb:0, bt709:1, bt470bg:5, smpte170m:6 };
+  const mx = color && MX[color.matrix] != null ? MX[color.matrix] : 1;
+  const colr = box('colr', str('nclx'), be([1, 1, mx], 2), new Uint8Array([color && color.fullRange ? 0x80 : 0]));
   const build = offsets => {
     const mvhd = full('mvhd', 0, 0, be([0, 0, 1000, movieDur, 0x00010000], 4), be([0x0100], 2), new Uint8Array(10), matrix, new Uint8Array(24), be([2], 4));
     const tkhd = full('tkhd', 0, 3, be([0, 0, 1, 0, movieDur, 0, 0], 4), be([0, 0, 0, 0], 2), matrix, be([w * 65536, h * 65536], 4));
@@ -5035,7 +5047,7 @@ function mp4Mux(samples, avcC, w, h, fps){
     const vmhd = full('vmhd', 0, 1, new Uint8Array(8));
     const dinf = box('dinf', full('dref', 0, 0, be([1], 4), full('url ', 0, 1)));
     const avc1 = box('avc1', new Uint8Array(6), be([1], 2), new Uint8Array(16), be([w, h], 2), be([0x00480000, 0x00480000, 0], 4), be([1], 2),
-      new Uint8Array(32), be([0x0018, 0xffff], 2), box('avcC', avcC), box('pasp', be([1, 1], 4)));
+      new Uint8Array(32), be([0x0018, 0xffff], 2), box('avcC', avcC), colr, box('pasp', be([1, 1], 4)));
     const stsd = full('stsd', 0, 0, be([1], 4), avc1);
     // コマの長さ（同じ長さが続く所はまとめる）
     const runs = [];
