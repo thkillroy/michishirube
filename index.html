@@ -753,7 +753,7 @@
     constructor(lls, o){ super(); this._lls = flatLL(lls); this.options = Object.assign({ color: '#3388ff', weight: 3, opacity: 1 }, o || {}); }
     _gopts(){
       const o = this.options, dash = parseDash(o.dashArray);
-      const base = { path: this._lls.map(gll), strokeColor: o.color, strokeWeight: o.weight, clickable: this.listens('click'), zIndex: o.zIndex || 1 };
+      const base = { path: this._lls.map(gll), strokeColor: o.color, strokeWeight: o.weight, clickable: this.listens('click') || this.listens('mousedown'), zIndex: o.zIndex || 1 };
       if(dash && dash.length){
         // 点線：Googleの線は点線の指定がないので、短い線の記号を等間隔に並べる
         const a = dash[0], b = dash[1] != null ? dash[1] : dash[0];
@@ -773,6 +773,7 @@
       if(this._gReady()){
         this._gp = new google.maps.Polyline(Object.assign(this._gopts(), { map: this._map._g }));
         this._gp.addListener('click', e => this.fire('click', { latlng: e.latLng ? new LatLng(e.latLng.lat(), e.latLng.lng()) : null, originalEvent: e.domEvent }));
+        this._gp.addListener('mousedown', e => this.fire('mousedown', { latlng: e.latLng ? new LatLng(e.latLng.lat(), e.latLng.lng()) : null, originalEvent: e.domEvent, stop: () => { try{ e.stop(); }catch(err){} } }));
         return;
       }
       if(this._mlReady()){
@@ -783,17 +784,20 @@
         ]);
         this._mlClick = e => this.fire('click', { latlng: new LatLng(e.lngLat.lat, e.lngLat.lng), originalEvent: e.originalEvent });
         ml.on('click', this._mlId, this._mlClick);
+        this._mlDown = e => this.fire('mousedown', { latlng: new LatLng(e.lngLat.lat, e.lngLat.lng), originalEvent: e.originalEvent });
+        ml.on('mousedown', this._mlId, this._mlDown);
+        ml.on('touchstart', this._mlId, this._mlDown);
       }
     }
     _detach(){
       if(this._gp){ this._gp.setMap(null); this._gp = null; }
       if(this._mlId){
         const ml = this._map && this._map._ml;
-        if(ml){ try{ ml.off('click', this._mlId, this._mlClick); }catch(e){} mlRemove(ml, this._mlId, [this._mlId]); }
+        if(ml){ try{ ml.off('click', this._mlId, this._mlClick); ml.off('mousedown', this._mlId, this._mlDown); ml.off('touchstart', this._mlId, this._mlDown); }catch(e){} mlRemove(ml, this._mlId, [this._mlId]); }
         this._mlId = null;
       }
     }
-    _onListen(t){ if(t === 'click' && this._gp) this._gp.setOptions({ clickable: true }); }
+    _onListen(t){ if((t === 'click' || t === 'mousedown') && this._gp) this._gp.setOptions({ clickable: true }); }
     _mlSet(){ if(this._mlId && this._map && this._map._ml){ const s = this._map._ml.getSource(this._mlId); if(s) s.setData(this._geo()); } }
     setLatLngs(lls){ this._lls = flatLL(lls); if(this._gp) this._gp.setPath(this._lls.map(gll)); this._mlSet(); return this; }
     getLatLngs(){ return this._lls.slice(); }
@@ -1989,8 +1993,12 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
       <button type="button" onclick="shareFromModal()" style="width:100%;padding:9px;background:#181b23;border:1px solid #343b48;color:#d6d6de;border-radius:8px;font-size:13px;cursor:pointer;" data-i18n="share_btn">📤 共有</button>
     </div>
     <div id="fixedpoint-route-toggle" style="display:none;align-items:center;gap:8px;margin-bottom:12px;">
-      <input type="checkbox" id="fixedpoint-add-to-route" checked onchange="toggleFixedPointRouteRow()" style="width:16px;height:16px;cursor:pointer;">
+      <input type="checkbox" id="fixedpoint-add-to-route" onchange="toggleFixedPointRouteRow()" style="width:16px;height:16px;cursor:pointer;">
       <label for="fixedpoint-add-to-route" style="font-size:13px;color:#ccc;cursor:pointer;text-transform:none;letter-spacing:normal;" data-i18n="assign_route_number_label">ルート番号を付ける</label>
+    </div>
+    <div id="position-row">
+      <label id="position-label" data-i18n="insert_pos_label">挿入位置</label>
+      <select id="modal-position"></select>
     </div>
     <div id="point-color-row" style="display:none;">
       <label data-i18n="point_color_label">ピンの色</label>
@@ -1999,10 +2007,6 @@ input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-searc
     <div id="modal-seg-row" style="display:none;">
       <label data-i18n="seg_mode_label">移動手段</label>
       <div id="modal-seg-modes" style="display:flex;gap:6px;margin-bottom:12px;"></div>
-    </div>
-    <div id="position-row">
-      <label id="position-label" data-i18n="insert_pos_label">挿入位置</label>
-      <select id="modal-position"></select>
     </div>
     <div id="modal-btns">
       <button class="btn btn-gray" onclick="cancelModal()" data-i18n="cancel_btn">キャンセル</button>
@@ -3712,6 +3716,7 @@ map.on('dragstart',()=>{ followMode=false; document.getElementById('follow-btn')
 let overlayClosedAt = 0;
 map.on('popupclose', ()=>{ overlayClosedAt = Date.now(); });
 map.on('click', e=>{
+  if(Date.now() < (window.__suppressMapClickUntil || 0)) return;   // 線を引っ張った直後のクリックは無視（ポイントを作らない）
   if(inlineEdit) return;   // 編集画面が開いている時（暗い所が受け取る）   // 編集欄が開いている時の地図のタップは、閉じるだけ
   if(!addMode)return;
   if(Date.now() - overlayClosedAt < 700) return;
@@ -3739,6 +3744,8 @@ function applyEditMode(){
     else p.marker.dragging.disable();
   });
   renderList();
+  // 線をつかめるか・通り道の印を出すかは編集中かどうかで変わるので、線を描き直す（保存済みの線を使うので問い合わせは無い）
+  if(points.length >= 2) updatePolyline();
   // 検索結果の＋ボタンを出し入れする
   if(typeof searchResults!=='undefined' && searchResults.length) renderSearchResults();
   map.closePopup();
@@ -3988,12 +3995,11 @@ function setModalTarget(target){
   const fpToggle = document.getElementById('fixedpoint-route-toggle');
   if(target === 'fixedpoint'){
     fpToggle.style.display = 'flex';
-    document.getElementById('fixedpoint-add-to-route').checked = true;
+    document.getElementById('fixedpoint-add-to-route').checked = false;   // 最初はルートに入れない
     showIconPicker(true, '⭐', {group_id: lastPointGroupId});
     showPhotoRow(true, null);
-    showModalSegRow(document.getElementById('fixedpoint-add-to-route').checked);
     showPointColorRow(false);
-    updatePositionRow();
+    toggleFixedPointRouteRow();   // チェックが無い間は、挿入位置と移動手段を出さない
   } else {
     fpToggle.style.display = 'none';
     showIconPicker(false);
@@ -4069,6 +4075,7 @@ function insertRoutePointAt(name, memo, lat, lng, fixedPointId, icon){
   const insertAt = determineInsertPosition();
   points.splice(insertAt,0,p);
   invalidateSeg(insertAt-1);
+  if(points[insertAt-1]) delete points[insertAt-1].segVia;   // 区間が2つに分かれたので、通り道の印は外す
   // 前のポイントからこのポイントまでの区間に、選んだ移動手段を使う
   if(modalSegRowActive && insertAt>0 && points[insertAt-1]){ points[insertAt-1].segMode = modalSegMode; rememberSegMode(modalSegMode); }
   rebuildAllMarkers();
@@ -4167,7 +4174,7 @@ async function confirmModal(){
       if(fpOverwriteId && !('photo_url' in photoFields)){ body.photo_url = null; body.photo_thumb_url = null; }
       const res = fpOverwriteId
         ? await supabaseFetch(`/rest/v1/saved_points?id=eq.${fpOverwriteId}`, { method:'PATCH', prefer:'return=minimal', body: JSON.stringify(body) })
-        : await supabaseFetch('/rest/v1/saved_points', { method:'POST', prefer:'return=minimal', body: JSON.stringify({ id:newId, user_id:currentUser.id, ...body }) });
+        : await supabaseFetch('/rest/v1/saved_points', { method:'POST', prefer:'return=minimal', body: JSON.stringify({ id:newId, user_id:currentUser.id, sort_order: bottomSortOrder(), ...body }) });
       if(res.ok){
         if(fpOverwriteId){
           if(!('photo_url' in photoFields)) deleteOwnPhotoFiles(fpOverwriteId);
@@ -4212,6 +4219,8 @@ async function deleteFromModal(){
     if(idx !== -1){
       map.removeLayer(points[idx].marker);
       points.splice(idx,1);
+      invalidateSeg(idx-1);
+      if(points[idx-1]) delete points[idx-1].segVia;
       rebuildAllMarkers();
       updatePolyline();
       renderList();
@@ -4242,13 +4251,13 @@ function openFixedPointEditModal(p){
   const canAddToRoute = addMode && !isFixedPointLinked(p.id);
   const fpToggle = document.getElementById('fixedpoint-route-toggle');
   fpToggle.style.display = canAddToRoute ? 'flex' : 'none';
-  if(canAddToRoute){ document.getElementById('fixedpoint-add-to-route').checked = true; updatePositionRow(); }   // 何番に入れるか選べる（最初は末尾）
-  else document.getElementById('position-row').style.display='none';
+  document.getElementById('fixedpoint-add-to-route').checked = false;   // 最初はルートに入れない。付けた時だけ何番に入れるか選べる
+  document.getElementById('position-row').style.display='none';
   document.getElementById('modal-name').value=p.name||'';
   document.getElementById('modal-memo-input').value=p.memo||'';
   showIconPicker(true, p.icon, p);
   showPhotoRow(true, p);
-  showModalSegRow(canAddToRoute);
+  showModalSegRow(false);
   setModalShareTarget(p);
   document.getElementById('modal-overlay').classList.add('show');
   setTimeout(()=>document.getElementById('modal-ok').focus(),100);
@@ -4442,7 +4451,144 @@ function refreshAllMarkers(){
 }
 
 // ===== ポリライン =====
-function clearPolylines(){ polylines.forEach(l=>map.removeLayer(l)); polylines=[]; }
+
+// ===== 線をつかんで別の道に引っ張る（通り道の印） =====
+// ・編集中に、道に沿った線（🚗🚚🚶🚲）をつかんで動かし、離した所を「通り道の印」にする（番号の付いたポイントは増やさない）
+// ・PC はそのままドラッグ、スマホは長押し（0.45秒）してからドラッグ（普通に触ると地図を動かす操作になるため）
+// ・印は区間（points[i].segVia）に覚え、その区間を「①→印→②」で引き直す。区間は1つのまま
+// ・編集中は印を小さな白い丸で出す。つかんで動かせる。押すと消える（元の道に戻る）
+let viaMarkers = [], segDrag = null;
+function clearViaMarkers(){ viaMarkers.forEach(m => { try{ map.removeLayer(m); }catch(e){} }); viaMarkers = []; }
+function setMapPan(on){
+  try{
+    if(map._g) map._g.setOptions({ gestureHandling: on ? 'greedy' : 'none', draggable: on });
+    if(map._ml){ if(on) map._ml.dragPan.enable(); else map._ml.dragPan.disable(); }
+  }catch(e){}
+}
+function pointerXY(ev){
+  const t = ev && ((ev.touches && ev.touches[0]) || (ev.changedTouches && ev.changedTouches[0]));
+  return t ? { x: t.clientX, y: t.clientY } : { x: ev.clientX, y: ev.clientY };
+}
+function clientToLatLng(x, y){
+  const r = document.getElementById('map').getBoundingClientRect();
+  return map.containerPointToLatLng([x - r.left, y - r.top]);
+}
+function enableSegDrag(line, i){
+  if(!addMode || !segNeedsRoad(i)) return;
+  line.on('mousedown', e => startSegDrag(i, e));
+}
+function startSegDrag(i, e){
+  if(!addMode || inlineEdit || segDrag) return;
+  const oe = e && e.originalEvent; if(!oe) return;
+  const touch = !!(oe.touches || oe.pointerType === 'touch' || (oe.type && oe.type.indexOf('touch') === 0));
+  const p0 = pointerXY(oe);
+  segDrag = { i, x0: p0.x, y0: p0.y, from: e.latlng, active: false, touch, tmp: null, ghost: null, timer: null };
+  const begin = () => {
+    if(!segDrag) return;
+    segDrag.active = true;
+    setMapPan(false);
+    try{ if(navigator.vibrate && touch) navigator.vibrate(20); }catch(err){}
+  };
+  if(touch) segDrag.timer = setTimeout(begin, 450);
+  else { if(e.stop) e.stop(); begin(); }   // マウスは、地図が動き出さないようにすぐ止める
+  window.addEventListener('mousemove', moveSegDrag, true);
+  window.addEventListener('touchmove', moveSegDrag, { capture:true, passive:false });
+  window.addEventListener('mouseup', endSegDrag, true);
+  window.addEventListener('touchend', endSegDrag, true);
+  window.addEventListener('touchcancel', endSegDrag, true);
+}
+function moveSegDrag(ev){
+  const d = segDrag; if(!d) return;
+  const pt = pointerXY(ev);
+  if(!d.active){
+    // 長押しの前に指が動いた → 普通の地図の操作なので、つかむのはやめる
+    if(Math.hypot(pt.x - d.x0, pt.y - d.y0) > 10) cancelSegDrag();
+    return;
+  }
+  if(ev.cancelable) ev.preventDefault();
+  ev.stopPropagation();
+  const ll = clientToLatLng(pt.x, pt.y);
+  const a = points[d.i], b = points[d.i + 1];
+  if(!a || !b) return;
+  const vias = viaOrderWith(d.i, [ll.lat, ll.lng], d.from);
+  const path = [[a.lat, a.lng]].concat(vias, [[b.lat, b.lng]]);
+  if(!d.ghost) d.ghost = L.polyline(path, { color:'#ffffff', weight:3, opacity:0.9, dashArray:'6,6' }).addTo(map);
+  else d.ghost.setLatLngs(path);
+  if(!d.tmp) d.tmp = L.marker([ll.lat, ll.lng], { interactive:false, icon: viaIcon(true) }).addTo(map);
+  else d.tmp.setLatLng([ll.lat, ll.lng]);
+  d.last = ll;
+}
+function cancelSegDrag(){
+  const d = segDrag; if(!d) return;
+  clearTimeout(d.timer);
+  if(d.ghost) map.removeLayer(d.ghost);
+  if(d.tmp) map.removeLayer(d.tmp);
+  window.removeEventListener('mousemove', moveSegDrag, true);
+  window.removeEventListener('touchmove', moveSegDrag, true);
+  window.removeEventListener('mouseup', endSegDrag, true);
+  window.removeEventListener('touchend', endSegDrag, true);
+  window.removeEventListener('touchcancel', endSegDrag, true);
+  if(d.active) setMapPan(true);
+  segDrag = null;
+}
+function endSegDrag(ev){
+  const d = segDrag; if(!d) return;
+  const pt = pointerXY(ev);
+  const moved = d.active && d.last && Math.hypot(pt.x - d.x0, pt.y - d.y0) > 8;
+  const i = d.i, ll = d.last, from = d.from;
+  cancelSegDrag();
+  if(!moved) return;
+  // 離した直後の地図のクリックでポイントが増えないようにする
+  window.__suppressMapClickUntil = Date.now() + 500;
+  const a = points[i]; if(!a) return;
+  a.segVia = viaOrderWith(i, [+ll.lat.toFixed(6), +ll.lng.toFixed(6)], from);
+  clearSegData(a); delete a.segWarn;
+  updatePolyline();
+}
+// 新しい印を、線の上の順番に合わせて並べる（つかんだ所の、線の上の位置で決める）
+function viaOrderWith(i, ll, from){
+  const a = points[i];
+  const path = (a && a.segPath && a.segPath.length > 1) ? a.segPath : null;
+  const list = (a.segVia || []).slice();
+  if(!path){ list.push(ll); return list; }
+  const pos = v => tbtNearest(path, v[0], v[1]).i;
+  const fromPos = from ? tbtNearest(path, from.lat, from.lng).i : path.length / 2;
+  const items = list.map(v => ({ v, k: pos(v) }));
+  items.push({ v: ll, k: fromPos + 0.5 });
+  items.sort((x, y) => x.k - y.k);
+  return items.map(x => x.v);
+}
+function viaIcon(active){
+  const s = active ? 16 : 13;
+  return L.divIcon({ className:'', iconSize:[s, s], iconAnchor:[s/2, s/2],
+    html: `<div style="width:${s}px;height:${s}px;border-radius:50%;background:#fff;border:3px solid ${active ? '#ff9f1c' : '#343b48'};box-shadow:0 1px 4px rgba(0,0,0,.5);box-sizing:border-box;"></div>` });
+}
+function drawViaMarkers(){
+  clearViaMarkers();
+  if(!addMode) return;
+  points.forEach((a, i) => {
+    if(i >= points.length - 1 || !a.segVia || !a.segVia.length || !segNeedsRoad(i)) return;
+    a.segVia.forEach((v, k) => {
+      const m = L.marker([v[0], v[1]], { draggable:true, icon: viaIcon(false), zIndexOffset: 500 }).addTo(map);
+      m.on('dragend', () => {
+        const ll = m.getLatLng();
+        a.segVia[k] = [+ll.lat.toFixed(6), +ll.lng.toFixed(6)];
+        clearSegData(a); delete a.segWarn;
+        updatePolyline();
+      });
+      m.on('click', () => {
+        if(m._dragging) return;
+        a.segVia.splice(k, 1);
+        if(!a.segVia.length) delete a.segVia;
+        clearSegData(a); delete a.segWarn;
+        updatePolyline();
+      });
+      viaMarkers.push(m);
+    });
+  });
+}
+
+function clearPolylines(){ polylines.forEach(l=>map.removeLayer(l)); polylines=[]; clearViaMarkers(); }
 
 // ===== 区間（ポイントとポイントの間）の移動手段と線の色 =====
 // 区間 i は points[i] → points[i+1]。設定は points[i] に持たせる（segMode / segColor）
@@ -4539,18 +4685,20 @@ function routeSlot(){
 async function fetchSegmentGeometry(a, b, mode){
   const ro = routeOpts();
   const optKey = ROUTE_ENGINE === 'valhalla' ? `|${ro.avoidTolls?1:0}${ro.avoidHighways?1:0}|${mode==='truck' ? [ro.truck.h,ro.truck.w,ro.truck.l,ro.truck.t].join(',') : ''}` : '';
-  const key = `${mode}|${a.lat.toFixed(5)},${a.lng.toFixed(5)}|${b.lat.toFixed(5)},${b.lng.toFixed(5)}${optKey}`;
+  const vias = (a.segVia || []).filter(v => v && v.length === 2);
+  const viaKey = vias.length ? '|v' + vias.map(v => (+v[0]).toFixed(5) + ',' + (+v[1]).toFixed(5)).join(';') : '';
+  const key = `${mode}|${a.lat.toFixed(5)},${a.lng.toFixed(5)}|${b.lat.toFixed(5)},${b.lng.toFixed(5)}${optKey}${viaKey}`;
   if(routeGeoCache[key]) return routeGeoCache[key];
   if(ROUTE_ENGINE === 'valhalla' && VALHALLA_COSTING[mode]){
     try{
-      const out = await fetchValhallaSegment(a, b, mode, ro);
+      const out = await fetchValhallaSegment(a, b, mode, ro, vias);
       routeGeoCache[key] = out;
       return out;
     }catch(e){ console.warn('Valhalla で引けなかったので OSRM で引きます', e); }
   }
-  return fetchOsrmSegment(a, b, mode, key);
+  return fetchOsrmSegment(a, b, mode, key, vias);
 }
-async function fetchValhallaSegment(a, b, mode, ro){
+async function fetchValhallaSegment(a, b, mode, ro, vias){
   const costing = VALHALLA_COSTING[mode];
   const co = {};
   if(costing === 'auto' || costing === 'truck'){
@@ -4558,7 +4706,9 @@ async function fetchValhallaSegment(a, b, mode, ro){
     co.use_highways = ro.avoidHighways ? 0 : 0.5;
   }
   if(costing === 'truck') Object.assign(co, { height: +ro.truck.h, width: +ro.truck.w, length: +ro.truck.l, weight: +ro.truck.t });
-  const req = { locations: [{ lat: a.lat, lon: a.lng }, { lat: b.lat, lon: b.lng }], costing,
+  // 通り道の印は「止まらずに通るだけ」の場所（through）。区間は1つのまま
+  const locs = [{ lat: a.lat, lon: a.lng }].concat((vias || []).map(v => ({ lat: +v[0], lon: +v[1], type: 'through' })), [{ lat: b.lat, lon: b.lng }]);
+  const req = { locations: locs, costing,
     costing_options: { [costing]: co }, format: 'osrm', shape_format: 'geojson', units: 'kilometers' };
   await routeSlot();
   const res = await fetch(`${VALHALLA_URL}/route?json=${encodeURIComponent(JSON.stringify(req))}`);
@@ -4579,9 +4729,13 @@ async function fetchValhallaSegment(a, b, mode, ro){
   }));
   return { geometry: { coordinates: coords }, distance: r.distance, duration: r.duration, steps: parseRouteSteps(r), toll, highway, engine: 'valhalla' };
 }
-async function fetchOsrmSegment(a, b, mode, key){
+async function fetchOsrmSegment(a, b, mode, key, vias){
   // steps=true：曲がる所の情報（曲がる場所・向き・道の名前・車線）も一緒にもらう（問い合わせの回数は同じ）
-  const url = `https://routing.openstreetmap.de/${SEG_PROFILE[mode]}/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson&continue_straight=true&steps=true`;
+  // 通り道の印は waypoints で「区切らない点」にする（区間は1つのまま）
+  const vv = vias || [];
+  const coordStr = [[a.lng, a.lat]].concat(vv.map(v => [+v[1], +v[0]]), [[b.lng, b.lat]]).map(c => c[0] + ',' + c[1]).join(';');
+  const wp = vv.length ? `&waypoints=0;${vv.length + 1}` : '';
+  const url = `https://routing.openstreetmap.de/${SEG_PROFILE[mode]}/route/v1/driving/${coordStr}?overview=full&geometries=geojson&continue_straight=true&steps=true${wp}`;
   await routeSlot();
   const res = await fetch(url);
   const data = await res.json();
@@ -4694,6 +4848,7 @@ async function updatePolyline(){
     if(a.segPath && a.segPath.length>1 && useRoad && mode!=='straight'){
       const line = L.polyline(a.segPath, {color, weight:5, opacity:0.85, dashArray:dash}).addTo(map);
       polylines.push(line);
+      enableSegDrag(line, i);
       dists[i] = pathLength(a.segPath);
       continue;
     }
@@ -4713,11 +4868,13 @@ async function updatePolyline(){
       setSegData(a, r);
       const line = L.polyline(coords, {style:null, color, weight:5, opacity:0.85}).addTo(map);
       polylines.push(line);
+      enableSegDrag(line, i);
       dists[i] = r.distance;
     }catch(e){ console.warn('経路取得に失敗', e); failed++; }
   }
   if(token!==polyToken) return;
   segmentDistances = dists;
+  drawViaMarkers();
   updateRouteAttr();
   updateSegWarnings();
   renderList();
@@ -5674,7 +5831,7 @@ function movePointTo(from, to){
   for(let k=0;k<points.length;k++){
     const a = points[k];
     if(k < points.length - 1 && oldNext.get(a) === points[k+1]) continue;
-    clearSegData(a); delete a.segWarn;
+    clearSegData(a); delete a.segWarn; delete a.segVia;
   }
   if(navActive){ navIndex = Math.min(navIndex, points.length - 1); saveNavProgress(); }
   rebuildAllMarkers();
@@ -5797,6 +5954,7 @@ function deletePoint(id){
   map.removeLayer(points[i].marker);
   points.splice(i,1);
   invalidateSeg(i-1);
+  if(points[i-1]) delete points[i-1].segVia;   // 区間がつながり直したので、通り道の印は外す
   if(navActive&&i<navIndex)navIndex--;
   if(navActive&&navIndex>=points.length)navIndex=Math.max(0,points.length-1);
   if(points.length===0)clearPolylines();
@@ -6343,22 +6501,68 @@ function updateEta(lat, lng){
   const d = new Date(Date.now() + sec * 1000);
   el.textContent = t('eta_label', { time: String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') });
 }
-// 前に保存したルートなど、曲がる所の情報が無い区間だけ、ナビの開始時にもらう（線の形は変えない）
-async function fetchMissingSteps(){
-  if(tbt.fetching) return;
-  tbt.fetching = true;
+// ===== 曲がる所・時間・有料の情報を、足りない区間だけ裏でもらう（線の形は変えない） =====
+// ・ルートを開いた時点で始める（ナビを始める頃にはそろっている）。ナビ開始の時にも、まだ足りなければ続きをもらう
+// ・自分の保存したルートなら、もらった情報だけを自動でそのルートに保存する（次からは問い合わせなし）
+//   編集中でまだ保存していない変更は保存しない（保存されている中身に、もらった情報だけを足して書き戻す）
+// ・他の人のルートは保存できないので、開くたびにもらう
+let infoGen = 0, infoStored = null, infoRunGen = -1;
+function segNeedsInfo(i){
+  const a = points[i];
+  return a && segNeedsRoad(i) && a.segPath && a.segPath.length > 1 && !(a.segSteps && a.segDur != null);
+}
+async function backfillRouteInfo(){
+  const gen = infoGen;
+  if(infoRunGen === gen) return;   // 同じルートで、もう動いている
+  infoRunGen = gen;
+  let got = 0;
   try{
-    for(let i=0;i<points.length-1;i++){
-      if(!navActive) break;
+    for(let i = 0; i < points.length - 1; i++){
+      if(gen !== infoGen) return;   // 別のルートを開いた・消した
+      if(!segNeedsInfo(i)) continue;
       const a = points[i], b = points[i+1];
-      if(!segNeedsRoad(i) || !a.segPath || a.segPath.length < 2 || (a.segSteps && a.segDur != null)) continue;
       try{
         const r = await fetchSegmentGeometry(a, b, segModeOf(i));
-        if(points[i] === a && points[i+1] === b) setSegData(a, r);
+        if(gen !== infoGen) return;
+        if(points[i] === a && points[i+1] === b){ setSegData(a, r); got++; }
       }catch(e){}
     }
-  } finally { tbt.fetching = false; }
+  } finally { if(infoRunGen === gen) infoRunGen = -1; }
+  if(got && gen === infoGen) await saveRouteInfoOnly();
 }
+// 保存されているルートの中身に、もらった情報（曲がる所・時間・有料）だけを足して書き戻す
+async function saveRouteInfoOnly(){
+  const st = infoStored;
+  if(!st || !currentUser || !openedRoute || openedRoute.id !== st.id) return;
+  const key = (x, y) => (+x).toFixed(6) + ',' + (+y).toFixed(6);
+  // 書き戻す直前に、保存されている今の中身を読み直す（その間にキルロイが保存し直していても、それを消さないように）
+  try{
+    const r0 = await supabaseFetch(`/rest/v1/routes?id=eq.${st.id}&select=points`);
+    const got = r0.ok ? await r0.json() : [];
+    if(!got.length || !Array.isArray(got[0].points)) return;
+    st.points = got[0].points;
+  }catch(e){ return; }
+  let changed = 0;
+  const snap = st.points.map(d => Object.assign({}, d));
+  for(let k = 0; k < snap.length - 1; k++){
+    const d = snap[k], e = snap[k+1];
+    if((d.segSteps && d.segDur != null) || !d.segPath) continue;
+    // 今のポイントの中から、同じ区間（両はしの場所が同じ）を探す
+    const i = points.findIndex((p, j) => j < points.length - 1 && key(p.lat, p.lng) === key(d.lat, d.lng) && key(points[j+1].lat, points[j+1].lng) === key(e.lat, e.lng));
+    if(i < 0) continue;
+    const a = points[i];
+    if(!a.segSteps || a.segDur == null) continue;
+    d.segSteps = a.segSteps; d.segDur = a.segDur;
+    if(a.segToll) d.segToll = 1; else delete d.segToll;
+    changed++;
+  }
+  if(!changed) return;
+  try{
+    const res = await supabaseFetch(`/rest/v1/routes?id=eq.${st.id}&user_id=eq.${currentUser.id}`, { method:'PATCH', prefer:'return=minimal', body: JSON.stringify({ points: snap }) });
+    if(res.ok) st.points = snap;
+  }catch(e){ console.warn('曲がる所の情報を保存できませんでした', e); }
+}
+async function fetchMissingSteps(){ return backfillRouteInfo(); }
 
 // 通り過ぎの判定：次のポイントに60m以内まで近づき、その後一番近かった時より20m以上離れたら「着いた」にする
 // （ポイントが反対車線・側道の上にあっても、ナビが止まらないように）
@@ -6524,11 +6728,12 @@ function reverseRoute(){
   if(!confirm(t('confirm_reverse')))return;
   // 区間の設定（移動手段・色・線の種類）を逆順に付け替える。
   // 道の形は使い回さない（行きの車線を逆に走る線になるため）。全部の区間を、復路の向きで道路のサーバーに問い合わせ直す
-  const segs = points.slice(0, points.length-1).map(p=>({ segMode: p.segMode, segColor: p.segColor, segStyle: p.segStyle }));
+  const segs = points.slice(0, points.length-1).map(p=>({ segMode: p.segMode, segColor: p.segColor, segStyle: p.segStyle, segVia: p.segVia }));
   points.reverse();
-  points.forEach(p=>{ delete p.segMode; delete p.segColor; delete p.segStyle; clearSegData(p); delete p.segWarn; });
+  points.forEach(p=>{ delete p.segMode; delete p.segColor; delete p.segStyle; clearSegData(p); delete p.segWarn; delete p.segVia; });
   segs.reverse();
   segs.forEach((sg,i)=>{
+    if(sg.segVia && sg.segVia.length) points[i].segVia = sg.segVia.slice().reverse();   // 通り道の印も逆の順に
     if(sg.segMode) points[i].segMode = sg.segMode;
     if(sg.segColor) points[i].segColor = sg.segColor;
     if(sg.segStyle) points[i].segStyle = sg.segStyle;
@@ -6587,6 +6792,7 @@ function pointToSnapshot(p){
   if(p.segColor) d.segColor = p.segColor;
   if(p.segStyle) d.segStyle = p.segStyle;
   if(p.segPath && p.segPath.length>1){ d.segPath = p.segPath; if(p.segSteps) d.segSteps = p.segSteps; if(p.segDur != null) d.segDur = p.segDur; if(p.segToll) d.segToll = 1; }
+  if(p.segVia && p.segVia.length) d.segVia = p.segVia;
   return d;
 }
 // 保存用データ → ルートポイント（中身は保存時のまま。固定ポイント本体が残っていれば紐付けだけ復活）
@@ -6600,6 +6806,7 @@ function snapshotToPoint(d, i){
   if(d.segSteps) p.segSteps = d.segSteps;
   if(d.segDur != null) p.segDur = d.segDur;
   if(d.segToll) p.segToll = 1;
+  if(Array.isArray(d.segVia) && d.segVia.length) p.segVia = d.segVia;
   if(d.fixedPointId && savedPoints.some(sp=>sp.id===d.fixedPointId)) p.fixedPointId = d.fixedPointId;
   // アイコン（⭐・🅿など）は、固定ポイントと結びついている時だけ付ける。
   // 結びついていた固定ポイントが削除された時は、普通のルートピンとして表示する
@@ -6636,6 +6843,7 @@ function loadRoute(){
 function clearAll(silent=false){
   if(!silent&&points.length&&!confirm(t('confirm_clear_all')))return;
   openedRoute = null;   // 開いているルートを忘れる
+  infoStored = null; infoGen++;   // 裏でもらっている曲がる所の情報も止める
   reverseDraft = false;
   points.forEach(p=>{if(p.marker)map.removeLayer(p.marker);});
   points=[];clearPolylines();
@@ -6826,7 +7034,7 @@ async function convertRoutePointToFixed(routePointId, name, memo, icon, fpMeta, 
     if(overwriteId && !('photo_url' in photoFields)){ body.photo_url = null; body.photo_thumb_url = null; }
     const res = overwriteId
       ? await supabaseFetch(`/rest/v1/saved_points?id=eq.${overwriteId}`, { method:'PATCH', prefer:'return=minimal', body: JSON.stringify(body) })
-      : await supabaseFetch('/rest/v1/saved_points', { method:'POST', prefer:'return=minimal', body: JSON.stringify({ id:newId, user_id:currentUser.id, ...body }) });
+      : await supabaseFetch('/rest/v1/saved_points', { method:'POST', prefer:'return=minimal', body: JSON.stringify({ id:newId, user_id:currentUser.id, sort_order: bottomSortOrder(), ...body }) });
     if(res.ok){
       const newSavedPoint = { id:newId, user_id:currentUser.id, ...body };
       if(overwriteId){
@@ -7767,6 +7975,7 @@ function addFixedPointToRoute(p){
   const insertAt = determineFixedInsertPosition();
   points.splice(insertAt,0,routePoint);
   invalidateSeg(insertAt-1);
+  if(points[insertAt-1]) delete points[insertAt-1].segVia;
   // 前のポイントからこのポイントまでの区間に、選んだ移動手段を使う
   if(modalSegRowActive && insertAt>0 && points[insertAt-1]){ points[insertAt-1].segMode = modalSegMode; rememberSegMode(modalSegMode); }
   rebuildAllMarkers();
@@ -8227,7 +8436,7 @@ async function saveToSupabase(mode){
     if(targetId){
       res = await supabaseFetch(`/rest/v1/routes?id=eq.${targetId}`, { method:'PATCH', prefer:'return=minimal', body: JSON.stringify(data) });
     } else {
-      res = await supabaseFetch('/rest/v1/routes', { method:'POST', prefer:'return=representation', body: JSON.stringify(Object.assign({ user_id: currentUser.id }, data)) });
+      res = await supabaseFetch('/rest/v1/routes', { method:'POST', prefer:'return=representation', body: JSON.stringify(Object.assign({ user_id: currentUser.id, sort_order: bottomSortOrder() }, data)) });
     }
     if(res.ok){
       if(!targetId){ const rows = await res.json(); savedId = rows && rows[0] ? rows[0].id : null; }
@@ -8503,14 +8712,14 @@ function closeRouteList(){
   mlSelected.clear();
 }
 
-async function loadRouteListTab(tab){
+async function loadRouteListTab(tab, quiet){
   if(tab !== currentTab){ mlSelectMode = false; mlSelected.clear(); mlSearch = ''; const si = document.getElementById('ml-search'); if(si) si.value = ''; }
   currentTab = tab;
   mlActionKey = null;
   ['mine','points','public'].forEach(x=>document.getElementById('tab-'+x).classList.toggle('active', x===tab));
   document.getElementById('mylist-toolbar').style.display = tab==='public' ? 'none' : 'block';
   const el = document.getElementById('route-list-items');
-  el.innerHTML = `<div style="text-align:center;padding:20px;color:#5e5e6b;font-size:12px;">${t('loading')}</div>`;
+  if(!quiet) el.innerHTML = `<div style="text-align:center;padding:20px;color:#5e5e6b;font-size:12px;">${t('loading')}</div>`;
   try{
     if(tab==='public'){
       await loadGroups();
@@ -8867,6 +9076,8 @@ function mlSelectAll(){
   renderMyList();
 }
 function mlSelectNone(){ mlSelected.clear(); renderMyList(); }
+// 1つの操作が終わったら、チェックを全部外して「☑ 選択」を押す前の一覧に戻す（付けたまま忘れて他の作業をしないように）
+function mlEndSelect(){ mlSelected.clear(); mlSelectMode = false; mlActionKey = null; }
 
 async function bulkMove(gid){
   if(gid === '__') return;
@@ -8875,7 +9086,8 @@ async function bulkMove(gid){
   const kind = mlKind();
   if(await mlWrite(`/rest/v1/${itemTable(kind)}?id=in.(${ids.join(',')})&user_id=eq.${currentUser.id}`,
       { method:'PATCH', body: JSON.stringify({ group_id: gid || null }) })){
-    await afterMlChange();   // 選択はそのまま（続けて公開範囲なども変えられる）。開閉状態もそのまま
+    mlEndSelect();
+    await afterMlChange();   // 開閉状態はそのまま
   } else renderMyList();
 }
 async function bulkVisibility(v){
@@ -8885,7 +9097,8 @@ async function bulkVisibility(v){
   const kind = mlKind();
   if(await mlWrite(`/rest/v1/${itemTable(kind)}?id=in.(${ids.join(',')})&user_id=eq.${currentUser.id}`,
       { method:'PATCH', body: JSON.stringify({ visibility: v, is_public: v==='public' }) })){
-    await afterMlChange();   // 選択はそのまま
+    mlEndSelect();
+    await afterMlChange();
   } else renderMyList();
 }
 async function bulkDelete(){
@@ -8895,7 +9108,7 @@ async function bulkDelete(){
   const kind = mlKind();
   if(await mlWrite(`/rest/v1/${itemTable(kind)}?id=in.(${ids.join(',')})&user_id=eq.${currentUser.id}`, { method:'DELETE' })){
     if(kind === 'point') ids.forEach(id=>deleteOwnPhotoFiles(id));   // 自分の写真ファイルも消す
-    mlSelected.clear();   // 消したものは選択から外す（選択モードはそのまま）
+    mlEndSelect();
     await afterMlChange();
   }
 }
@@ -8915,9 +9128,9 @@ function groupRowHTML(kind, g, depth){
   </div>`;
   if(mlActionKey===key){
     html += `<div class="ml-actions" style="padding-left:${pad+30}px;">
+      ${mlRenameHTML(`g:${kind}:${g.id}`, g.name)}
       ${visButtonsHTML(g.visibility, `setGroupVisibility('${kind}','${g.id}','VAL')`)}
       <button class="ml-btn" onclick="createGroup('${g.id}')">${t('subfolder_btn')}</button>
-      <button class="ml-btn" onclick="renameGroup('${kind}','${g.id}')">${t('rename_btn')}</button>
       <button class="ml-btn" onclick="shareItem('${kind==='route'?'rg':'pg'}','${g.id}','${g.visibility}')">${t('share_btn')}</button>
       <span class="ml-move"><span class="ml-sub">${t('move_to_label')}</span>
       <select onchange="moveGroup('${kind}','${g.id}',this.value)">${groupOptionsHTML(kind, g.parent_group_id||null, g.id)}</select></span>
@@ -8948,9 +9161,10 @@ function itemRowHTML(kind, it, depth){
   </div>`;
   if(mlActionKey===key){
     html += `<div class="ml-actions" style="padding-left:${pad+30}px;">
+      ${kind==='route' ? mlRenameHTML(`r:${it.id}`, it.name) : ''}
       ${visButtonsHTML(it.visibility, `setItemVisibility('${kind}','${it.id}','VAL')`)}
       ${kind==='route'
-        ? `<button class="ml-btn" onclick="renameRoute('${it.id}')">${t('rename_btn')}</button>`
+        ? ''
         : `<button class="ml-btn" onclick="editSavedPointFromList('${it.id}')">${t('edit_btn')}</button>`
           + (it.photo_thumb_url ? `<button class="ml-btn${it.photo_pinned?' active':''}" style="${it.photo_pinned?'background:#ff9f1c;color:#000;border-color:#ff9f1c;':''}" onclick="togglePhotoPinned('${it.id}')">🖼 ${t(it.photo_pinned?'photo_pin_on':'photo_pin_off')}</button>` : '')}
       <button class="ml-btn" onclick="shareItem('${kind==='route'?'r':'p'}','${it.id}','${it.visibility}')">${t('share_btn')}</button>
@@ -8992,6 +9206,9 @@ function toggleMlActions(key){
     requestAnimationFrame(()=>{
       const el = document.querySelector('#route-list-items .ml-actions');
       if(el) el.scrollIntoView({ block:'nearest', behavior:'smooth' });
+      // PC では名前の欄にすぐ書けるようにする（スマホは勝手にキーボードが出ないよう、押した時だけ）
+      const inp = el && el.querySelector('.ml-rename-input');
+      if(inp && window.matchMedia('(pointer:fine)').matches){ inp.focus(); inp.select(); }
     });
   }
 }
@@ -9010,8 +9227,13 @@ async function mlWrite(path, options){
 
 async function afterMlChange(){
   const kind = mlKind();
+  // 今の一覧を出したまま読み直す（「読み込み中…」に置き換えると一瞬消えて点滅するため）。スクロールの位置も保つ
+  const el = document.getElementById('route-list-items');
+  const keep = [];
+  for(let c = el; c && c !== document.body; c = c.parentElement) if(c.scrollTop) keep.push([c, c.scrollTop]);
   if(kind==='point'){ await loadSavedPoints(); }
-  await loadRouteListTab(currentTab);
+  await loadRouteListTab(currentTab, true);
+  keep.forEach(([c, y]) => { c.scrollTop = y; });
 }
 
 async function createGroup(parentId){
@@ -9022,14 +9244,14 @@ async function createGroup(parentId){
   await afterMlChange();
 }
 
-async function renameGroup(kind, id){
+async function renameGroup(kind, id, newName){
   const g = findGroup(kind, id); if(!g) return;
-  const name = (prompt(t('rename_prompt'), g.name) || '').trim();
-  if(!name || name===g.name) return;
+  const name = (newName != null ? String(newName) : (prompt(t('rename_prompt'), g.name) || '')).trim();
+  if(!name || name===g.name){ mlActionKey = null; renderMyList(); return; }
   const rg = await resolveSameGroupName(kind, name, g.parent_group_id, id);
   if(!rg) return;
-  if(rg.mergeId){ await mergeGroupInto(kind, id, rg.mergeId); await afterMlChange(); return; }
-  if(await mlWrite(`/rest/v1/${groupTable(kind)}?id=eq.${id}`, { method:'PATCH', body: JSON.stringify({ name: rg.name }) })) await afterMlChange();
+  if(rg.mergeId){ await mergeGroupInto(kind, id, rg.mergeId); mlActionKey = null; await afterMlChange(); return; }
+  if(await mlWrite(`/rest/v1/${groupTable(kind)}?id=eq.${id}`, { method:'PATCH', body: JSON.stringify({ name: rg.name }) })){ mlActionKey = null; await afterMlChange(); }
 }
 
 async function moveGroup(kind, id, parentId){
@@ -9101,15 +9323,34 @@ async function toggleGroupHidden(id){
   }
 }
 
-async function renameRoute(id){
+// 「⋯」の一番上の名前の欄（その場で書き換え。Enter か「保存」で決定、Esc で取り消し）
+function mlRenameHTML(key, name){
+  return `<div class="ml-rename" style="display:flex;gap:6px;width:100%;margin-bottom:6px;">
+    <input class="ml-rename-input" data-key="${fEsc(key)}" value="${fEsc(name || '')}" maxlength="80"
+      onkeydown="if(event.key==='Enter'){event.preventDefault();mlCommitRename(this);}else if(event.key==='Escape'){event.preventDefault();mlActionKey=null;renderMyList();}"
+      style="flex:1;min-width:0;background:#08090d;border:1px solid #ff9f1c;border-radius:6px;color:#e9e9ee;padding:6px 8px;font-size:14px;">
+    <button class="ml-btn" style="background:#ff9f1c;border-color:#ff9f1c;color:#000;font-weight:700;" onclick="mlCommitRename(this.previousElementSibling)">${t('save_btn2')}</button>
+  </div>`;
+}
+async function mlCommitRename(input){
+  if(!input || input._busy) return;
+  const key = input.dataset.key, name = input.value.trim();
+  if(!name) return;
+  input._busy = true;
+  try{
+    if(key.indexOf('r:') === 0) await renameRoute(key.slice(2), name);
+    else { const a = key.split(':'); await renameGroup(a[1], a[2], name); }
+  } finally { input._busy = false; }
+}
+async function renameRoute(id, newName){
   const r = myRoutes.find(x=>x.id===id); if(!r) return;
-  let name = (prompt(t('rename_prompt'), r.name) || '').trim();
-  if(!name || name===r.name) return;
+  let name = (newName != null ? String(newName) : (prompt(t('rename_prompt'), r.name) || '')).trim();
+  if(!name || name===r.name){ mlActionKey = null; renderMyList(); return; }
   const rs = await resolveSameName('route', name, r.group_id, id);
   if(!rs) return;
   name = rs.name;
   if(rs.overwriteId){ try{ await deleteOwnItemQuiet('route', rs.overwriteId); }catch(e){ alert(saveFailText(e.message)); return; } }
-  if(await mlWrite(`/rest/v1/routes?id=eq.${id}`, { method:'PATCH', body: JSON.stringify({ name }) })) await afterMlChange();
+  if(await mlWrite(`/rest/v1/routes?id=eq.${id}`, { method:'PATCH', body: JSON.stringify({ name }) })){ mlActionKey = null; await afterMlChange(); }
 }
 
 async function deleteItemFromList(kind, id){
@@ -10299,9 +10540,19 @@ async function overwriteOwnPoint(mineId, src, byName){
 // ===== 保存（コピーは必ず🔒非公開。元を記録して、2回目は足りない分だけ追加） =====
 async function insertRows(table, rows){
   if(!rows.length) return;
-  const res = await supabaseFetch(`/rest/v1/${table}`, { method:'POST', prefer:'return=minimal', body: JSON.stringify(rows) });
-  if(!res.ok) throw new Error(await res.text());
+  if(table === 'routes' || table === 'saved_points') rows.forEach((r, i) => { if(r.sort_order == null) r.sort_order = bottomSortOrder() + i; });
+  let res = await supabaseFetch(`/rest/v1/${table}`, { method:'POST', prefer:'return=minimal', body: JSON.stringify(rows) });
+  if(!res.ok){
+    const tx = await res.text();
+    if(/sort_order/.test(tx)){   // 並び順の列が無い時は、並び順なしで入れ直す
+      rows.forEach(r => delete r.sort_order);
+      res = await supabaseFetch(`/rest/v1/${table}`, { method:'POST', prefer:'return=minimal', body: JSON.stringify(rows) });
+      if(!res.ok) throw new Error(await res.text());
+    } else throw new Error(tx);
+  }
 }
+// 新しく作った物を「自分の並び」で一番下にするための並び順（動かしたことが無い物よりも下。新しいほど下）
+function bottomSortOrder(){ return 1000000000 + (Math.floor(Date.now() / 1000) - 1700000000); }
 
 // フォルダ構造をコピー。既に同じ元からコピー済みのフォルダは使い回す。戻り値：元ID → 自分のID
 // 戻り値：元ID → 自分のID／null＝キャンセル（何も作らない）
@@ -10483,6 +10734,7 @@ async function savePreview(){
           if(d.segSteps) c.segSteps = d.segSteps;
           if(d.segDur != null) c.segDur = d.segDur;
           if(d.segToll) c.segToll = 1;
+          if(Array.isArray(d.segVia) && d.segVia.length) c.segVia = d.segVia;
           if(includePts && d.fixedPointId && fpMap[d.fixedPointId]){
             c.fixedPointId = fpMap[d.fixedPointId];
             if(d.icon) c.icon = d.icon;
@@ -10532,6 +10784,10 @@ async function loadFromSupabase(id, silent){
       addMarker(p,i); points.push(p);
     });
     updatePolyline(); renderList();
+    // 曲がる所・時間・有料の情報が無い区間は、今のうちに裏でもらう（自分のルートなら、もらった情報を自動で保存）
+    infoGen++;
+    infoStored = openedRoute ? { id: route.id, points: route.points } : null;
+    setTimeout(backfillRouteInfo, 800);
     if(points.length) map.fitBounds(points.map(p=>[p.lat,p.lng]),{padding:[40,40]});
     closeRouteList();
     if(!silent) alert(t('alert_load_success',{name:route.name}));
