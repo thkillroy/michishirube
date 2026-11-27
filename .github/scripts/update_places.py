@@ -15,11 +15,16 @@ MICHI-SHIRUBE 施設データの更新（GitHub Actions で毎月1回動く）
   OVERTURE_RELEASE      … 版を手で決めたい時だけ（例 2026-11-18.0）
   N02_URL               … 日本の駅データ（国土数値情報 鉄道）の zip を手で決めたい時だけ
 
-日本の駅は Overture ではなく、国土数値情報（鉄道 N02、国土交通省、CC BY 4.0）を使う。
-  Overture の駅はホーム・出口・店や、遠くにずれた「東京駅」などが多いため。
-  国土数値情報が読めなかった時だけ、Overture の駅を使う（アプリ側で整理される）
+日本だけ、次のデータを足す（どれも商用利用できるもの）
+  ・駅 … 国土数値情報（鉄道 N02、CC BY 4.0）。Overture の駅は捨てる（ホーム・出口・店や、遠くにずれた「東京駅」が多いため）
+  ・IC・スマートIC・JCT … 国土数値情報（高速道路時系列 N06、今あるものだけ＝現況として使う時は CC BY 4.0）
+  ・病院 … 国土数値情報（医療機関 P04、CC BY 4.0）。診療所・歯科は数が多すぎるので入れない
+  ・空港 … 国土数値情報（空港 C28、商用可）
+  ・道の駅・SA・PA・温泉・山・滝・湖・城・神社・寺・博物館・美術館・動物園・水族館・遊園地 … Wikidata（CC0）
+    Overture に同じ名前で300m以内のものがある時は Wikidata 側を捨てる（二重にしない）
+  どれかが読めなかった時は、その分だけ足さずに続ける（駅は Overture のまま）
 """
-import csv, gzip, io, json, os, sys, time, urllib.request, urllib.error, zipfile
+import csv, gzip, io, json, os, re, sys, time, unicodedata, urllib.parse, urllib.request, urllib.error, zipfile
 from datetime import date
 
 import duckdb
@@ -165,25 +170,29 @@ def extract(con, path, country):
 N02_SRC = 'MLIT N02'
 
 
-def n02_download():
-    """一番新しい年の zip を探して取ってくる（今年 → 去年 → … 2024年まで）"""
+def ksj_download(code, first_yy, url_env=None):
+    """国土数値情報の zip を、一番新しい年から探して取ってくる（今年 → 去年 → … first_yy 年まで）"""
     urls = []
-    if os.environ.get('N02_URL', '').strip():
-        urls.append(os.environ['N02_URL'].strip())
-    for y in range(date.today().year, 2023, -1):
+    if url_env and os.environ.get(url_env, '').strip():
+        urls.append(os.environ[url_env].strip())
+    for y in range(date.today().year, 2000 + first_yy - 1, -1):
         yy = y % 100
-        urls.append(f'https://nlftp.mlit.go.jp/ksj/gml/data/N02/N02-{yy:02d}/N02-{yy:02d}_GML.zip')
+        urls.append(f'https://nlftp.mlit.go.jp/ksj/gml/data/{code}/{code}-{yy:02d}/{code}-{yy:02d}_GML.zip')
     for u in urls:
         try:
             req = urllib.request.Request(u, headers={'User-Agent': 'michishirube-places-update'})
-            with urllib.request.urlopen(req, timeout=120) as r:
+            with urllib.request.urlopen(req, timeout=180) as r:
                 data = r.read()
             if data[:2] == b'PK':
-                log('国土数値情報（鉄道）:', u, f'{len(data) // 1024}KB')
+                log(f'国土数値情報 {code}:', u, f'{len(data) // 1024}KB')
                 return data, u
         except Exception as e:
             log('  読めない:', u, str(e)[:120])
     return None, None
+
+
+def n02_download():
+    return ksj_download('N02', 24, 'N02_URL')
 
 
 def _decode(b):
@@ -196,46 +205,59 @@ def _decode(b):
 
 
 def _mid(geom):
-    """駅の線（ホームの形）の真ん中あたりの点"""
+    """点ならそのまま、線・面なら座標の平均（真ん中あたりの点）"""
     t = geom.get('type')
     cs = geom.get('coordinates') or []
     if t == 'Point':
         return cs[0], cs[1]
-    if t == 'MultiLineString':
+    if t == 'MultiLineString' or t == 'Polygon':
         cs = [c for line in cs for c in line]
+    elif t == 'MultiPolygon':
+        cs = [c for poly in cs for ring in poly for c in ring]
+    elif t == 'MultiPoint':
+        pass
     if not cs:
         return None
     xs = [c[0] for c in cs]; ys = [c[1] for c in cs]
     return sum(xs) / len(xs), sum(ys) / len(ys)
 
 
-def n02_features(zbytes):
-    """zip の中から駅の GeoJSON（無ければシェープファイル）を読む"""
+def ksj_features(zbytes, want, avoid=()):
+    """zip の中から、名前に want（どれか）をふくみ avoid をふくまないファイルを読む（GeoJSON 優先、無ければシェープファイル）"""
     z = zipfile.ZipFile(io.BytesIO(zbytes))
     names = z.namelist()
-    gj = [n for n in names if n.lower().endswith('.geojson') and 'station' in n.lower()]
-    gj.sort(key=lambda n: (0 if 'utf' in n.lower() else 1, n))
+
+    def ok(n):
+        l = n.lower().replace('\\', '/').split('/')[-1]
+        return any(w.lower() in l for w in want) and not any(a.lower() in l for a in avoid)
+    gj = [n for n in names if n.lower().endswith('.geojson') and ok(n)]
+    gj.sort(key=lambda n: (0 if 'utf' in n.lower() else 1, len(n), n))
     if gj:
         log('  読むファイル:', gj[0])
         js = json.loads(_decode(z.read(gj[0])))
         return [(f.get('properties') or {}, f.get('geometry') or {}) for f in js.get('features', [])]
-    shp = [n for n in names if n.lower().endswith('.shp') and 'station' in n.lower()]
+    shp = [n for n in names if n.lower().endswith('.shp') and ok(n)]
+    shp.sort(key=lambda n: (0 if 'utf' in n.lower() else 1, len(n), n))
     if shp:
         import shapefile  # pyshp
         base = shp[0][:-4]
         log('  読むファイル:', shp[0])
-        out = []
         for enc in ('cp932', 'utf-8'):
             try:
+                out = []
                 rd = shapefile.Reader(shp=io.BytesIO(z.read(base + '.shp')), shx=io.BytesIO(z.read(base + '.shx')),
                                       dbf=io.BytesIO(z.read(base + '.dbf')), encoding=enc)
                 for sr in rd.iterShapeRecords():
                     out.append((sr.record.as_dict(), sr.shape.__geo_interface__))
                 return out
             except UnicodeDecodeError:
-                out = []
-        return out
-    raise RuntimeError('zip の中に駅のファイルが無い: ' + ', '.join(names[:20]))
+                pass
+        return []
+    raise RuntimeError(f'zip の中に {want} のファイルが無い: ' + ', '.join(names[:30]))
+
+
+def n02_features(zbytes):
+    return ksj_features(zbytes, ['station'])
 
 
 def n02_rows(feats):
@@ -285,6 +307,265 @@ def replace_jp_stations(rows):
     return kept + st, url
 
 
+# ---------------------------------------------------------------------
+# IC・スマートIC・JCT：国土数値情報（高速道路時系列 N06）
+#   今あるもの（設置期間の終わりが無い／9999）だけを使う ＝ 現況データとしての利用（CC BY 4.0）
+# ---------------------------------------------------------------------
+N06_KIND = {'1': 'IC', '2': 'スマートIC', '3': 'JCT'}   # 4：その他の接合部は入れない
+
+
+def _code(v):
+    v = str(v if v is not None else '').strip()
+    return v[:-2] if v.endswith('.0') else v
+
+
+def n06_rows():
+    zb, url = ksj_download('N06', 24)
+    if not zb:
+        return [], None
+    feats = ksj_features(zb, ['joint'])
+    rows, seen, kinds, ended = [], set(), {}, 0
+    for props, geom in feats:
+        end = _code(props.get('N06_014'))
+        if end and end not in ('9999', '0'):
+            ended += 1
+            continue
+        kind = N06_KIND.get(_code(props.get('N06_019')))
+        kinds[_code(props.get('N06_019'))] = kinds.get(_code(props.get('N06_019')), 0) + 1
+        if not kind:
+            continue
+        name = str(props.get('N06_018') or '').strip()
+        m = _mid(geom)
+        if not name or not m:
+            continue
+        nm = name
+        if kind == 'JCT' and not re.search(r'(JCT|ＪＣＴ|ジャンクション)$', nm):
+            nm += 'JCT'
+        elif kind == 'スマートIC' and not re.search(r'(スマートIC|スマートＩＣ|スマートインターチェンジ)$', nm):
+            nm += 'スマートIC'
+        elif kind == 'IC' and not re.search(r'(IC|ＩＣ|インターチェンジ|インター)$', nm):
+            nm += 'IC'
+        key = (nm, round(m[0], 2), round(m[1], 2))
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append((f'n06:{nm}:{m[1]:.4f}:{m[0]:.4f}', 'JP', 'ic', nm, None, kind, m[1], m[0], 'MLIT N06'))
+    log(f'  IC・JCT：{len(rows)} 件（終わった設置期間 {ended} 件は入れない／種別ごとの数 {kinds}）')
+    return rows, url
+
+
+# ---------------------------------------------------------------------
+# 病院：国土数値情報（医療機関 P04、CC BY 4.0）
+# ---------------------------------------------------------------------
+def p04_rows():
+    zb, url = ksj_download('P04', 20)
+    if not zb:
+        return [], None
+    feats = ksj_features(zb, ['p04'], avoid=['_01_', '_02_'])
+    rows, classes = [], {}
+    for props, geom in feats:
+        cl = _code(props.get('P04_001'))
+        classes[cl] = classes.get(cl, 0) + 1
+        if cl != '1':          # 1：病院 だけ（診療所・歯科は入れない）
+            continue
+        name = str(props.get('P04_002') or '').strip()
+        m = _mid(geom)
+        if not name or not m:
+            continue
+        addr = str(props.get('P04_003') or '').strip()
+        if _code(props.get('P04_009')) == '1':
+            addr = (addr + ' 救急告示病院').strip()
+        rows.append((f'p04:{name}:{m[1]:.5f}:{m[0]:.5f}', 'JP', 'hospital', name, None, addr or None, m[1], m[0], 'MLIT P04'))
+    log(f'  病院：{len(rows)} 件（医療機関分類ごとの数 {classes}）')
+    return rows, url
+
+
+# ---------------------------------------------------------------------
+# 空港：国土数値情報（空港 C28、商用可）
+#   名前は「空港」（面）にあり、位置は「標点」（点）にあるので、空港IDでつなぐ
+# ---------------------------------------------------------------------
+def c28_rows():
+    zb, url = ksj_download('C28', 21)
+    if not zb:
+        return [], None
+    polys = ksj_features(zb, ['airport'], avoid=['reference', 'point'])
+    try:
+        pts = ksj_features(zb, ['reference', 'point'])
+    except RuntimeError:
+        pts = []
+    ptmap = {}
+    for props, geom in pts:
+        m = _mid(geom)
+        if m:
+            ptmap[_code(props.get('C28_000'))] = m
+    rows, seen = [], set()
+    for props, geom in polys:
+        name = str(props.get('C28_005') or '').strip()
+        aid = _code(props.get('C28_000'))
+        m = ptmap.get(aid) or _mid(geom)
+        if not name or not m or name in seen:
+            continue
+        seen.add(name)
+        nm = name if re.search(r'(空港|飛行場|ヘリポート)$', name) else name + '空港'
+        rows.append((f'c28:{aid or name}', 'JP', 'airport', nm, None, None, m[1], m[0], 'MLIT C28'))
+    log(f'  空港：{len(rows)} 件')
+    return rows, url
+
+
+# ---------------------------------------------------------------------
+# Wikidata（CC0）：道の駅・SA・PA・温泉・観光地
+# ---------------------------------------------------------------------
+WD_UA = 'MICHI-SHIRUBE-places-update/1.0 (https://thkilroy.com/michishirube/)'
+# (種類, Wikidata の QID か、日本語のラベルで探す時は None, ラベル)
+WD_CLASSES = [
+    ('rest',  None,        '道の駅'),
+    ('rest',  None,        'サービスエリア'),
+    ('rest',  None,        'パーキングエリア'),
+    ('onsen', 'Q177380',   '温泉'),
+    ('sight', 'Q8502',     '山'),
+    ('sight', 'Q34038',    '滝'),
+    ('sight', 'Q23397',    '湖'),
+    ('sight', 'Q23413',    '城'),
+    ('sight', 'Q845945',   '神社'),
+    ('sight', 'Q5393308',  '仏教寺院'),
+    ('sight', 'Q33506',    '博物館'),
+    ('sight', 'Q207694',   '美術館'),
+    ('sight', 'Q43501',    '動物園'),
+    ('sight', 'Q2281788',  '水族館'),
+    ('sight', 'Q194195',   '遊園地'),
+    ('sight', None,        '展望台'),
+]
+
+
+def wd_get(url, timeout=90):
+    req = urllib.request.Request(url, headers={'User-Agent': WD_UA, 'Accept': 'application/sparql-results+json'})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode('utf-8'))
+
+
+def wd_find_class(label):
+    """日本語のラベルで Wikidata の項目を探す（一番上の候補）"""
+    q = urllib.parse.urlencode({'action': 'wbsearchentities', 'search': label, 'language': 'ja',
+                                'uselang': 'ja', 'type': 'item', 'limit': 3, 'format': 'json'})
+    js = wd_get('https://www.wikidata.org/w/api.php?' + q)
+    hits = js.get('search') or []
+    for h in hits:
+        if h.get('label') == label:
+            return h['id'], h.get('description', '')
+    return (hits[0]['id'], hits[0].get('description', '')) if hits else (None, '')
+
+
+def wd_query(qid, deep=True):
+    path = 'wdt:P31/wdt:P279*' if deep else 'wdt:P31'
+    sparql = f"""
+SELECT ?item ?ja ?en ?coord ?adminJa WHERE {{
+  ?item {path} wd:{qid} ; wdt:P17 wd:Q17 ; wdt:P625 ?coord ; rdfs:label ?ja .
+  FILTER(LANG(?ja) = "ja")
+  OPTIONAL {{ ?item rdfs:label ?en . FILTER(LANG(?en) = "en") }}
+  OPTIONAL {{ ?item wdt:P131 ?adm . ?adm rdfs:label ?adminJa . FILTER(LANG(?adminJa) = "ja") }}
+  FILTER NOT EXISTS {{ ?item wdt:P576 ?gone }}
+}}"""
+    url = 'https://query.wikidata.org/sparql?' + urllib.parse.urlencode({'query': sparql, 'format': 'json'})
+    return wd_get(url, timeout=120).get('results', {}).get('bindings', [])
+
+
+def _pt(wkt):
+    m = re.match(r'Point\(([-0-9.eE]+) ([-0-9.eE]+)\)', wkt or '')
+    return (float(m.group(1)), float(m.group(2))) if m else None
+
+
+def wikidata_rows():
+    rows, seen, info = [], set(), []
+    for cat, qid, label in WD_CLASSES:
+        try:
+            if not qid:
+                qid, desc = wd_find_class(label)
+                if not qid:
+                    info.append(f'{label}: 見つからない'); continue
+                info.append(f'{label}: {qid}（{desc}）')
+            else:
+                info.append(f'{label}: {qid}')
+            try:
+                bs = wd_query(qid, deep=True)
+            except Exception as e:
+                log(f'  {label}：下の分類までの検索が重いので、直接の分類だけで探す', str(e)[:100])
+                time.sleep(5)
+                bs = wd_query(qid, deep=False)
+        except Exception as e:
+            log(f'  {label}：読めない', str(e)[:200]); continue
+        n = 0
+        for b in bs:
+            item = b['item']['value'].rsplit('/', 1)[-1]
+            if item in seen:
+                continue
+            p = _pt(b.get('coord', {}).get('value'))
+            name = b.get('ja', {}).get('value', '').strip()
+            if not p or not name or not (122 <= p[0] <= 154.5 and 20 <= p[1] <= 46):
+                continue
+            seen.add(item)
+            en = b.get('en', {}).get('value') or None
+            adm = b.get('adminJa', {}).get('value') or None
+            rows.append((f'wd:{item}', 'JP', cat, name, en, adm, p[1], p[0], 'Wikidata'))
+            n += 1
+        log(f'  Wikidata {label}：{n} 件')
+        info[-1] += f' → {n} 件'
+        time.sleep(2)
+    return rows, info
+
+
+def _nkey(name):
+    s = unicodedata.normalize('NFKC', name or '').lower()
+    s = re.sub(r'^道の駅', '', s.strip())   # 「道の駅 川場田園プラザ」と「川場田園プラザ」を同じとみなす
+    return re.sub(r'[\s\-‐‑‒–—―−・·.,\'’`&/()「」『』【】!?〈〉<>]', '', s)
+
+
+def drop_near_dupes(base, extra, meters=300):
+    """extra のうち、base に同じ名前で meters 以内のものがあれば捨てる"""
+    grid = {}
+    for r in base:
+        grid.setdefault((_nkey(r[3]), round(r[6], 2), round(r[7], 2)), []).append(r)
+    out, dropped = [], 0
+    for r in extra:
+        k, la, ln = _nkey(r[3]), round(r[6], 2), round(r[7], 2)
+        dup = False
+        for dla in (-0.01, 0, 0.01):
+            for dln in (-0.01, 0, 0.01):
+                for o in grid.get((k, round(la + dla, 2), round(ln + dln, 2)), []):
+                    dy = (o[6] - r[6]) * 111000
+                    dx = (o[7] - r[7]) * 111000 * 0.8
+                    if dx * dx + dy * dy < meters * meters:
+                        dup = True; break
+                if dup: break
+            if dup: break
+        if dup:
+            dropped += 1
+        else:
+            out.append(r)
+    return out, dropped
+
+
+def add_jp_extras(rows, stats):
+    """日本だけ：IC・病院・空港・Wikidata を足す（どれかが失敗しても、ほかは続ける）"""
+    for label, fn in (('IC・JCT（N06）', n06_rows), ('病院（P04）', p04_rows), ('空港（C28）', c28_rows)):
+        try:
+            extra, url = fn()
+            rows = rows + extra
+            stats.append(f'JP {label}: {len(extra)} 件 {url or "（読めない）"}')
+        except Exception as e:
+            log(f'{label} で失敗、足さずに続ける:', str(e)[:300])
+            stats.append(f'JP {label}: 失敗 {str(e)[:120]}')
+    try:
+        wd, info = wikidata_rows()
+        wd, dropped = drop_near_dupes(rows, wd)
+        rows = rows + wd
+        stats.append(f'JP Wikidata: {len(wd)} 件（Overture などと重なる {dropped} 件は捨てた）')
+        stats.extend('  ' + i for i in info)
+    except Exception as e:
+        log('Wikidata で失敗、足さずに続ける:', str(e)[:300])
+        stats.append(f'JP Wikidata: 失敗 {str(e)[:120]}')
+    return rows
+
+
 def sb_request(method, path, body=None, prefer=None):
     headers = {'apikey': SB_KEY, 'Content-Type': 'application/json'}
     if SB_KEY.startswith('eyJ'):          # 旧 service_role キー（JWT）
@@ -310,15 +591,38 @@ def sb_request(method, path, body=None, prefer=None):
 
 
 def upload(country, rows):
+    """置き場所（places_stage）に入れてから、2万件ずつ本番（places）に移し、最後に古いデータを消す
+    （1回の処理を短くして、Supabase の時間切れで止まらないようにする。途中で失敗しても本番は空にならない）"""
     cols = ['id', 'country', 'cat', 'name', 'name_en', 'addr', 'lat', 'lng', 'src']
-    sb_request('DELETE', f'/rest/v1/places_stage?country=eq.{country}', prefer='return=minimal')
+    # 前回の残りを空にする
+    while True:
+        n = sb_request('POST', '/rest/v1/rpc/places_stage_clear_chunk', {'p_country': country, 'p_n': 20000})
+        if not n:
+            break
+        log(f'  置き場所の前回の残りを消した {n} 件')
     for i in range(0, len(rows), BATCH):
         chunk = [dict(zip(cols, r)) for r in rows[i:i + BATCH]]
         sb_request('POST', '/rest/v1/places_stage', chunk, prefer='return=minimal')
-        log(f'  入れた {min(i + BATCH, len(rows))}/{len(rows)}')
+        if (i // BATCH) % 10 == 0 or i + BATCH >= len(rows):
+            log(f'  入れた {min(i + BATCH, len(rows))}/{len(rows)}')
     min_rows = max(100, int(len(rows) * 0.5))
-    n = sb_request('POST', '/rest/v1/rpc/places_swap', {'p_country': country, 'p_min_rows': min_rows})
-    log(f'{country}: places を入れ替えた（{n} 件）')
+    sb_request('POST', '/rest/v1/rpc/places_check', {'p_country': country, 'p_min_rows': min_rows})
+    run = time.strftime('%Y%m%d%H%M%S') + f'-{os.getpid()}'
+    moved = 0
+    while True:
+        n = sb_request('POST', '/rest/v1/rpc/places_move_chunk', {'p_country': country, 'p_run': run, 'p_n': 20000})
+        if n == 0:
+            break
+        moved += max(n, 0)
+        log(f'  本番へ移した {moved} 件')
+    cleared = 0
+    while True:
+        n = sb_request('POST', '/rest/v1/rpc/places_clear_chunk', {'p_country': country, 'p_run': run, 'p_n': 20000})
+        if not n:
+            break
+        cleared += n
+        log(f'  古いデータを消した {cleared} 件')
+    log(f'{country}: places を入れ替えた（新しく {moved} 件、古い {cleared} 件を消した）')
 
 
 def main():
@@ -340,6 +644,7 @@ def main():
         if country == 'JP':
             rows, n02url = replace_jp_stations(rows)
             stats.append(f'JP stations: {"国土数値情報 " + n02url if n02url else "Overture（国土数値情報が使えなかった）"}')
+            rows = add_jp_extras(rows, stats)
         counts = {}
         for r in rows:
             counts[r[2]] = counts.get(r[2], 0) + 1
