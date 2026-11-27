@@ -5708,7 +5708,10 @@ function deletePoint(id){
   if(navActive)updateNavBar();
 }
 
-// ===== 施設・住所検索（Geoapify：中身は OpenStreetMap） =====
+// ===== 施設・住所検索（v172：まず自分の施設テーブル → 無ければ Geoapify） =====
+// ・施設テーブル（Supabase の places）：Overture Maps の施設（コンビニ・GS・EV充電・駅・道の駅/SA/PA・ホテル・温泉・観光地）
+//   毎月 GitHub Actions が自動で入れ替える。ログイン不要・回数制限なし
+// ・そこで見つからない時だけ Geoapify（中身は OpenStreetMap）
 // ・Geoapify には Supabase の関数（geo-search）を通して問い合わせる（APIキーはサーバーの中だけ。画面には出さない）
 // ・回数の上限は Supabase で数える：1人1日50回・全体で1日2,500回（Geoapify の無料枠 1日3,000回の手前で止める）。日本時間0時に戻る
 // ・検索ボタンか Enter の時だけ送る（打つたびには送らない）
@@ -5768,8 +5771,16 @@ async function searchAddress(){
   });
 
   try{
-    // 自分のポイントで見つかった時は、Geoapify には問い合わせない
-    if(!results.length){
+    // 自分のポイントで見つかった時は、施設テーブルにも Geoapify にも問い合わせない
+    // まず施設テーブル（無料・回数制限なし）→ 見つからない時だけ Geoapify
+    const db = results.length ? null : await placesSearch(q, center);
+    if(db && db.length){
+      db.forEach(pl=>{
+        const nm = (currentLang!=='ja' && pl.name_en) ? pl.name_en : pl.name;
+        results.push({ kind:'place', via:'db', cat: pl.cat, name: nm || q, memo: pl.addr || '',
+          lat: pl.lat, lng: pl.lng, dist: calcDist(center.lat,center.lng,pl.lat,pl.lng) });
+      });
+    } else if(!results.length){
       const r = await geoSearch(q, center);
       if(r.status === 'ok'){
         (r.results||[]).forEach(pl=>{
@@ -5797,6 +5808,19 @@ async function searchAddress(){
   // 候補が全部入るように地図を広げる（1件だけならその場所へ移動）
   if(results.length===1) setViewVisible([results[0].lat, results[0].lng], map.getZoom());   // 倍率はそのまま
   else map.fitBounds(results.map(r=>[r.lat,r.lng]), {paddingTopLeft:fitPadTL(60), paddingBottomRight:fitPadBR(60), maxZoom:16});
+}
+
+// 施設テーブルで探す（Supabase の search_places）。戻り値：配列（失敗した時は null → Geoapify へ）
+// 施設の種類ごとの絵文字（検索結果の一覧に出す）
+const PLACE_CAT_EMOJI = { conveni:'🏪', fuel:'⛽', ev:'🔌', station:'🚉', rest:'🅿️', hotel:'🏨', onsen:'♨️', sight:'📸' };
+async function placesSearch(q, center){
+  try{
+    const res = await supabaseFetch('/rest/v1/rpc/search_places', { method:'POST',
+      body: JSON.stringify({ q, clat: center.lat, clng: center.lng, lim: 10 }) });
+    if(!res.ok) return null;
+    const data = await res.json();
+    return Array.isArray(data) ? data : null;
+  }catch(e){ console.warn('placesSearch', e); return null; }
 }
 
 // Geoapify で探す（Supabase の関数 geo-search 経由）。戻り値：{ status:'ok'|'user_limit'|'global_limit'|'login'|'error', results }
@@ -5844,13 +5868,15 @@ function renderSearchResults(){
     return m;
   });
   // 地図の場所（Geoapify）の結果がある時は、出典を出す（無料プランの決まり）
-  const geoCredit = searchResults.some(r=>r.kind==='place')
+  const dbCredit = searchResults.some(r=>r.via==='db')
+    ? `<div style="font-size:10px;color:#7e7e8b;padding:2px 8px 4px;">© <a href="https://overturemaps.org/" target="_blank" rel="noopener" style="color:#9ab;">Overture Maps Foundation</a> · Foursquare (<a href="./PLACES_DATA_LICENSE.txt" target="_blank" rel="noopener" style="color:#9ab;">Apache 2.0</a>)</div>` : '';
+  const geoCredit = searchResults.some(r=>r.kind==='place' && r.via!=='db')
     ? `<div style="font-size:10px;color:#7e7e8b;padding:2px 8px 4px;">Powered by <a href="https://www.geoapify.com/" target="_blank" rel="noopener" style="color:#9ab;">Geoapify</a> · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:#9ab;">OpenStreetMap</a> contributors</div>` : '';
   el.innerHTML = `<div class="sr-head"><span>${t('search_results_title',{n:searchResults.length})}</span>
-      <button class="ml-btn" style="padding:2px 8px;" onclick="clearSearchResults()">✕</button></div>` + geoCredit +
+      <button class="ml-btn" style="padding:2px 8px;" onclick="clearSearchResults()">✕</button></div>` + dbCredit + geoCredit +
     searchResults.map((r,i)=>`<div class="sr-row" style="border-left:3px solid ${SEARCH_COLORS[r.kind]||SEARCH_COLORS.place};">
       <div class="sr-name" onclick="gotoSearchResult(${i})">${
-        r.kind==='place' ? '📍' : `<span style="display:inline-flex;vertical-align:middle;">${iconHTML(r.icon,16)}</span>`
+        r.kind==='place' ? (PLACE_CAT_EMOJI[r.cat] || '📍') : `<span style="display:inline-flex;vertical-align:middle;">${iconHTML(r.icon,16)}</span>`
       } ${fEsc(r.name)}</div>
       <span class="sr-dist">${formatDist(r.dist)}</span>
       ${(addMode && r.kind!=='route') ? `<button class="ml-btn" style="background:#ff9f1c;border-color:#ff9f1c;color:#000;font-weight:700;" onclick="addSearchResult(${i})">＋</button>` : ''}
