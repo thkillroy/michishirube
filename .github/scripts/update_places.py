@@ -57,7 +57,7 @@ CAT_RULES = [
     ('fuel',    ['gas_station', 'fuel_station', 'petrol_station', 'filling_station']),
     ('ev',      ['ev_charging', 'charging_station', 'electric_vehicle_charging']),
     ('conveni', ['convenience_store', 'convenience']),
-    ('onsen',   ['hot_spring', 'onsen', 'public_bath', 'bathhouse', 'bath_house']),
+    ('onsen',   ['hot_spring', 'onsen', 'public_bath', 'bathhouse', 'bath_house', 'sauna']),
     ('hotel',   ['hotel', 'ryokan', 'motel', 'hostel', 'guest_house', 'resort', 'lodging']),
     ('sight',   ['tourist_attraction', 'landmark', 'monument', 'castle', 'viewpoint', 'scenic', 'observation_deck', 'museum']),
 ]
