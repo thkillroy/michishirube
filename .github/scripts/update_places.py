@@ -13,8 +13,14 @@ MICHI-SHIRUBE 施設データの更新（GitHub Actions で毎月1回動く）
   PLACES_MIN_CONFIDENCE … これより確かさが低い施設は入れない（0〜1、ふつう 0.5）
   DRY_RUN               … "true" なら Supabase に入れず、件数だけ出す
   OVERTURE_RELEASE      … 版を手で決めたい時だけ（例 2026-11-18.0）
+  N02_URL               … 日本の駅データ（国土数値情報 鉄道）の zip を手で決めたい時だけ
+
+日本の駅は Overture ではなく、国土数値情報（鉄道 N02、国土交通省、CC BY 4.0）を使う。
+  Overture の駅はホーム・出口・店や、遠くにずれた「東京駅」などが多いため。
+  国土数値情報が読めなかった時だけ、Overture の駅を使う（アプリ側で整理される）
 """
-import csv, gzip, json, os, sys, time, urllib.request, urllib.error
+import csv, gzip, io, json, os, sys, time, urllib.request, urllib.error, zipfile
+from datetime import date
 
 import duckdb
 
@@ -153,6 +159,132 @@ def extract(con, path, country):
     raise SystemExit(f'取り出し失敗: {last}')
 
 
+# ---------------------------------------------------------------------
+# 日本の駅：国土数値情報（鉄道 N02）
+# ---------------------------------------------------------------------
+N02_SRC = 'MLIT N02'
+
+
+def n02_download():
+    """一番新しい年の zip を探して取ってくる（今年 → 去年 → … 2024年まで）"""
+    urls = []
+    if os.environ.get('N02_URL', '').strip():
+        urls.append(os.environ['N02_URL'].strip())
+    for y in range(date.today().year, 2023, -1):
+        yy = y % 100
+        urls.append(f'https://nlftp.mlit.go.jp/ksj/gml/data/N02/N02-{yy:02d}/N02-{yy:02d}_GML.zip')
+    for u in urls:
+        try:
+            req = urllib.request.Request(u, headers={'User-Agent': 'michishirube-places-update'})
+            with urllib.request.urlopen(req, timeout=120) as r:
+                data = r.read()
+            if data[:2] == b'PK':
+                log('国土数値情報（鉄道）:', u, f'{len(data) // 1024}KB')
+                return data, u
+        except Exception as e:
+            log('  読めない:', u, str(e)[:120])
+    return None, None
+
+
+def _decode(b):
+    for enc in ('utf-8-sig', 'cp932'):
+        try:
+            return b.decode(enc)
+        except UnicodeDecodeError:
+            pass
+    return b.decode('utf-8', 'replace')
+
+
+def _mid(geom):
+    """駅の線（ホームの形）の真ん中あたりの点"""
+    t = geom.get('type')
+    cs = geom.get('coordinates') or []
+    if t == 'Point':
+        return cs[0], cs[1]
+    if t == 'MultiLineString':
+        cs = [c for line in cs for c in line]
+    if not cs:
+        return None
+    xs = [c[0] for c in cs]; ys = [c[1] for c in cs]
+    return sum(xs) / len(xs), sum(ys) / len(ys)
+
+
+def n02_features(zbytes):
+    """zip の中から駅の GeoJSON（無ければシェープファイル）を読む"""
+    z = zipfile.ZipFile(io.BytesIO(zbytes))
+    names = z.namelist()
+    gj = [n for n in names if n.lower().endswith('.geojson') and 'station' in n.lower()]
+    gj.sort(key=lambda n: (0 if 'utf' in n.lower() else 1, n))
+    if gj:
+        log('  読むファイル:', gj[0])
+        js = json.loads(_decode(z.read(gj[0])))
+        return [(f.get('properties') or {}, f.get('geometry') or {}) for f in js.get('features', [])]
+    shp = [n for n in names if n.lower().endswith('.shp') and 'station' in n.lower()]
+    if shp:
+        import shapefile  # pyshp
+        base = shp[0][:-4]
+        log('  読むファイル:', shp[0])
+        out = []
+        for enc in ('cp932', 'utf-8'):
+            try:
+                rd = shapefile.Reader(shp=io.BytesIO(z.read(base + '.shp')), shx=io.BytesIO(z.read(base + '.shx')),
+                                      dbf=io.BytesIO(z.read(base + '.dbf')), encoding=enc)
+                for sr in rd.iterShapeRecords():
+                    out.append((sr.record.as_dict(), sr.shape.__geo_interface__))
+                return out
+            except UnicodeDecodeError:
+                out = []
+        return out
+    raise RuntimeError('zip の中に駅のファイルが無い: ' + ', '.join(names[:20]))
+
+
+def n02_rows(feats):
+    """同じ駅（グループコード＋駅名）を1件にまとめる。路線名・会社名は住所の欄に入れる（検索で当たるように）"""
+    groups = {}
+    for props, geom in feats:
+        name = str(props.get('N02_005') or '').strip()
+        if not name:
+            continue
+        m = _mid(geom)
+        if not m:
+            continue
+        g = str(props.get('N02_005g') or props.get('N02_005c') or name)
+        key = (g, name)
+        e = groups.setdefault(key, {'xs': [], 'ys': [], 'lines': [], 'code': g})
+        e['xs'].append(m[0]); e['ys'].append(m[1])
+        line = str(props.get('N02_003') or '').strip()
+        comp = str(props.get('N02_004') or '').strip()
+        label = (comp + ' ' + line).strip() if comp and line and comp not in line else (line or comp)
+        if label and label not in e['lines']:
+            e['lines'].append(label)
+    rows = []
+    for (g, name), e in groups.items():
+        nm = name if name.endswith('駅') else name + '駅'
+        lng = sum(e['xs']) / len(e['xs']); lat = sum(e['ys']) / len(e['ys'])
+        addr = '・'.join(e['lines'])[:300] or None
+        rows.append((f'n02:{g}:{name}', 'JP', 'station', nm, None, addr, lat, lng, N02_SRC))
+    return rows
+
+
+def replace_jp_stations(rows):
+    """Overture の駅を国土数値情報の駅に入れ替える（読めなかった時はそのまま）"""
+    try:
+        zb, url = n02_download()
+        if not zb:
+            log('国土数値情報が読めないので、日本の駅は Overture のまま')
+            return rows, None
+        st = n02_rows(n02_features(zb))
+    except Exception as e:
+        log('国土数値情報の読み込みで失敗、日本の駅は Overture のまま:', str(e)[:300])
+        return rows, None
+    if len(st) < 5000:
+        log(f'国土数値情報の駅が少なすぎる（{len(st)}件）ので使わない。日本の駅は Overture のまま')
+        return rows, None
+    kept = [r for r in rows if r[2] != 'station']
+    log(f'日本の駅：Overture {len(rows) - len(kept)} 件 → 国土数値情報 {len(st)} 件')
+    return kept + st, url
+
+
 def sb_request(method, path, body=None, prefer=None):
     headers = {'apikey': SB_KEY, 'Content-Type': 'application/json'}
     if SB_KEY.startswith('eyJ'):          # 旧 service_role キー（JWT）
@@ -205,6 +337,9 @@ def main():
     stats = [f'Overture release: {rel}', f'min confidence: {MIN_CONF}', '']
     for country in COUNTRIES:
         rows = extract(con, path, country)
+        if country == 'JP':
+            rows, n02url = replace_jp_stations(rows)
+            stats.append(f'JP stations: {"国土数値情報 " + n02url if n02url else "Overture（国土数値情報が使えなかった）"}')
         counts = {}
         for r in rows:
             counts[r[2]] = counts.get(r[2], 0) + 1
