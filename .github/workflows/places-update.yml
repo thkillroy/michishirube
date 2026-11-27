@@ -1,0 +1,55 @@
+# MICHI-SHIRUBE 施設データの更新
+# ・毎月26日 日本時間 3:17 に自動で動く（Overture は毎月中ごろに新しい版が出る）
+# ・GitHub の「Actions」→「places-update」→「Run workflow」で手でも動かせる
+# ・必要な Secrets（Settings → Secrets and variables → Actions）
+#     SUPABASE_URL         … https://xxxx.supabase.co
+#     SUPABASE_SECRET_KEY  … Supabase の secret キー
+name: places-update
+
+on:
+  schedule:
+    - cron: '17 18 25 * *'   # UTC で毎月25日 18:17 ＝ 日本時間 26日 3:17
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'true にすると Supabase に入れず、件数だけ見る'
+        required: false
+        default: 'false'
+      countries:
+        description: '国（カンマ区切り。例 JP や JP,TW）'
+        required: false
+        default: 'JP'
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install DuckDB
+        run: pip install duckdb==1.1.3
+
+      - name: Extract and upload places
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          PLACES_COUNTRIES: ${{ github.event.inputs.countries || 'JP' }}
+          PLACES_MIN_CONFIDENCE: '0.5'
+        run: python .github/scripts/update_places.py
+
+      - name: Save result files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: places-result
+          path: places_out/
+          retention-days: 30
