@@ -5709,7 +5709,7 @@ function deletePoint(id){
 }
 
 // ===== 施設・住所検索（v172：まず自分の施設テーブル → 無ければ Geoapify） =====
-// ・施設テーブル（Supabase の places）：Overture Maps の施設（コンビニ・GS・EV充電・駅・道の駅/SA/PA・ホテル・温泉・観光地）
+// ・施設テーブル（Supabase の places）：Overture Maps の施設＋日本の駅・IC・病院・空港は国土数値情報、道の駅・温泉・観光地は Wikidata も（v174）（コンビニ・GS・EV充電・駅・道の駅/SA/PA・ホテル・温泉・観光地）
 //   毎月 GitHub Actions が自動で入れ替える。ログイン不要・回数制限なし
 // ・そこで見つからない時だけ Geoapify（中身は OpenStreetMap）
 // ・Geoapify には Supabase の関数（geo-search）を通して問い合わせる（APIキーはサーバーの中だけ。画面には出さない）
@@ -5771,16 +5771,21 @@ async function searchAddress(){
   });
 
   try{
-    // 自分のポイントで見つかった時は、施設テーブルにも Geoapify にも問い合わせない
-    // まず施設テーブル（無料・回数制限なし）→ 見つからない時だけ Geoapify
-    const db = results.length ? null : await placesSearch(q, center);
+    // v175：施設テーブル（無料・回数制限なし）はいつも探す。自分のポイントと同じ場所（同じ名前で100m以内）は出さない
+    // Geoapify（1日の回数制限あり）は、自分のポイントにも施設テーブルにも無い時だけ
+    const db = await placesSearch(q, center);
     if(db && db.length){
+      const normName = s => (s||'').normalize('NFKC').toLowerCase().replace(/^道の駅/,'').replace(/[\s\-‐－・･]/g,'');
+      const own = results.slice();
       db.forEach(pl=>{
         const nm = (currentLang!=='ja' && pl.name_en) ? pl.name_en : pl.name;
+        const dup = own.some(o => normName(o.name) === normName(pl.name) && calcDist(o.lat,o.lng,pl.lat,pl.lng) < 100);
+        if(dup) return;
         results.push({ kind:'place', via:'db', cat: pl.cat, name: nm || q, memo: pl.addr || '',
           lat: pl.lat, lng: pl.lng, dist: calcDist(center.lat,center.lng,pl.lat,pl.lng) });
       });
-    } else if(!results.length){
+    }
+    if(!results.length){
       const r = await geoSearch(q, center);
       if(r.status === 'ok'){
         (r.results||[]).forEach(pl=>{
@@ -5812,7 +5817,8 @@ async function searchAddress(){
 
 // 施設テーブルで探す（Supabase の search_places）。戻り値：配列（失敗した時は null → Geoapify へ）
 // 施設の種類ごとの絵文字（検索結果の一覧に出す）
-const PLACE_CAT_EMOJI = { conveni:'🏪', fuel:'⛽', ev:'🔌', station:'🚉', rest:'🅿️', hotel:'🏨', onsen:'♨️', sight:'📸' };
+const PLACE_CAT_EMOJI = { conveni:'🏪', fuel:'⛽', ev:'🔌', station:'🚉', rest:'🅿️', hotel:'🏨', onsen:'♨️', sight:'📸',
+  ic:'🛣️', hospital:'🏥', airport:'✈️' };   // v174：IC・病院・空港
 async function placesSearch(q, center){
   try{
     const res = await supabaseFetch('/rest/v1/rpc/search_places', { method:'POST',
@@ -5869,7 +5875,7 @@ function renderSearchResults(){
   });
   // 地図の場所（Geoapify）の結果がある時は、出典を出す（無料プランの決まり）
   const dbCredit = searchResults.some(r=>r.via==='db')
-    ? `<div style="font-size:10px;color:#7e7e8b;padding:2px 8px 4px;">© <a href="https://overturemaps.org/" target="_blank" rel="noopener" style="color:#9ab;">Overture Maps Foundation</a> · Foursquare (<a href="./PLACES_DATA_LICENSE.txt" target="_blank" rel="noopener" style="color:#9ab;">Apache 2.0</a>)</div>` : '';
+    ? `<div style="font-size:10px;color:#7e7e8b;padding:2px 8px 4px;">© <a href="https://overturemaps.org/" target="_blank" rel="noopener" style="color:#9ab;">Overture Maps Foundation</a> · Foursquare (<a href="./PLACES_DATA_LICENSE.txt" target="_blank" rel="noopener" style="color:#9ab;">Apache 2.0</a>) · <a href="./PLACES_DATA_LICENSE.txt" target="_blank" rel="noopener" style="color:#9ab;">国土数値情報（国土交通省）を加工して作成</a> · Wikidata</div>` : '';
   const geoCredit = searchResults.some(r=>r.kind==='place' && r.via!=='db')
     ? `<div style="font-size:10px;color:#7e7e8b;padding:2px 8px 4px;">Powered by <a href="https://www.geoapify.com/" target="_blank" rel="noopener" style="color:#9ab;">Geoapify</a> · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:#9ab;">OpenStreetMap</a> contributors</div>` : '';
   el.innerHTML = `<div class="sr-head"><span>${t('search_results_title',{n:searchResults.length})}</span>
