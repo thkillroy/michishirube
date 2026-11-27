@@ -4257,8 +4257,9 @@ function clearPolylines(){ polylines.forEach(l=>map.removeLayer(l)); polylines=[
 // 区間 i は points[i] → points[i+1]。設定は points[i] に持たせる（segMode / segColor）
 const SEG_MODES = ['car','truck','foot','bike','straight','train','plane'];
 const SEG_ICONS = { car:'🚗', truck:'🚚', foot:'🚶', bike:'🚲', straight:'📏', train:'🚃', plane:'✈️' };
-const SEG_DEFAULT_COLORS = { car:'#ff9f1c', truck:'#ffd23f', foot:'#2fd6a5', bike:'#45c7ff', straight:'#00d5c8', train:'#9b7bff', plane:'#ff5c8a' };
-const SEG_COLOR_CHOICES = ['#ff9f1c','#2fd6a5','#45c7ff','#9b7bff','#ff5c8a','#ffffff','#e8e8ea','#00d5c8'];
+const SEG_DEFAULT_COLORS = { car:'#ff9f1c', truck:'#ff3b30',   // v170：トラックは赤（黄色は地図と見分けにくいため）
+  foot:'#2fd6a5', bike:'#45c7ff', straight:'#00d5c8', train:'#9b7bff', plane:'#ff5c8a' };
+const SEG_COLOR_CHOICES = ['#ff9f1c','#ff3b30','#2fd6a5','#45c7ff','#9b7bff','#ff5c8a','#ffffff','#e8e8ea','#00d5c8'];
 // 線の種類（Leafletのdash指定）
 const SEG_STYLES = {
   solid:   null,
