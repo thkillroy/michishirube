@@ -1,8 +1,8 @@
 {
   "name": "MICHI-SHIRUBE",
   "short_name": "MICHI",
-  "description": "順番に巡るためのナビ。ルートと固定ポイントを作って、走って、共有する。",
-  "start_url": "./",
+  "description": "順番に巡るためのナビ。ルートと固定ポイントを作って、走って、録画して、共有する。",
+  "start_url": "./michishirube.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
