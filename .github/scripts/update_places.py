@@ -22,7 +22,12 @@ OUT_DIR = 'places_out'
 COUNTRIES = [c.strip().upper() for c in os.environ.get('PLACES_COUNTRIES', 'JP').split(',') if c.strip()]
 MIN_CONF = float(os.environ.get('PLACES_MIN_CONFIDENCE', '0.5') or 0.5)
 DRY_RUN = os.environ.get('DRY_RUN', 'false').strip().lower() == 'true'
-SB_URL = os.environ.get('SUPABASE_URL', '').strip().rstrip('/')
+SB_URL = os.environ.get('SUPABASE_URL', '').strip()
+# 「https://xxxx.supabase.co/rest/v1/」のように後ろに何か付いていても、「https://xxxx.supabase.co」だけにする
+if SB_URL:
+    from urllib.parse import urlsplit
+    _u = urlsplit(SB_URL if '://' in SB_URL else 'https://' + SB_URL)
+    SB_URL = f'{_u.scheme}://{_u.netloc}'
 SB_KEY = os.environ.get('SUPABASE_SECRET_KEY', '').strip()
 BATCH = 2000
 
@@ -60,13 +65,7 @@ def latest_release(con):
     rel = os.environ.get('OVERTURE_RELEASE', '').strip()
     if rel:
         return rel
-    try:
-        rel = http_json('https://labs.overturemaps.org/data/releases.json').get('latest')
-        if rel:
-            return rel
-    except Exception as e:
-        log('releases.json が読めない:', e)
-    # 予備：S3 の中を見て一番新しい版
+    # S3 の中を見て一番新しい版
     rows = con.execute(
         "SELECT DISTINCT regexp_extract(file, 'release/([^/]+)/', 1) AS r "
         "FROM glob('s3://overturemaps-us-west-2/release/*/theme=places/type=place/*.parquet') ORDER BY r DESC LIMIT 1"
@@ -200,6 +199,8 @@ def main():
     rel = latest_release(con)
     path = f's3://overturemaps-us-west-2/release/{rel}/theme=places/type=place/*.parquet'
     log('Overture の版:', rel)
+    if not DRY_RUN:
+        log('Supabase:', SB_URL.split('//')[-1].split('.')[0][:4] + '…supabase.co')
 
     stats = [f'Overture release: {rel}', f'min confidence: {MIN_CONF}', '']
     for country in COUNTRIES:
