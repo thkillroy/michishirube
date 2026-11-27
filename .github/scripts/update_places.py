@@ -455,11 +455,23 @@ def wd_find_class(label):
     return (hits[0]['id'], hits[0].get('description', '')) if hits else (None, '')
 
 
-def wd_query(qid, deep=True):
-    path = 'wdt:P31/wdt:P279*' if deep else 'wdt:P31'
+def wd_subclasses(qid):
+    """その分類の下にある細かい分類の一覧（自分もふくむ）"""
+    sparql = f'SELECT DISTINCT ?c WHERE {{ ?c wdt:P279* wd:{qid} . }}'
+    url = 'https://query.wikidata.org/sparql?' + urllib.parse.urlencode({'query': sparql, 'format': 'json'})
+    bs = wd_get(url, timeout=120).get('results', {}).get('bindings', [])
+    return [b['c']['value'].rsplit('/', 1)[-1] for b in bs] or [qid]
+
+
+def wd_query(qid, deep=True, classes=None):
+    if classes:
+        path = 'wdt:P31 ?cls'
+        target = 'VALUES ?cls { ' + ' '.join('wd:' + c for c in classes) + ' }\n  ?item ' + path
+    else:
+        target = '?item ' + ('wdt:P31/wdt:P279*' if deep else 'wdt:P31') + f' wd:{qid}'
     sparql = f"""
 SELECT ?item ?ja ?en ?coord ?adminJa WHERE {{
-  ?item {path} wd:{qid} ; wdt:P17 wd:Q17 ; wdt:P625 ?coord ; rdfs:label ?ja .
+  {target} ; wdt:P17 wd:Q17 ; wdt:P625 ?coord ; rdfs:label ?ja .
   FILTER(LANG(?ja) = "ja")
   OPTIONAL {{ ?item rdfs:label ?en . FILTER(LANG(?en) = "en") }}
   OPTIONAL {{ ?item wdt:P131 ?adm . ?adm rdfs:label ?adminJa . FILTER(LANG(?adminJa) = "ja") }}
@@ -488,9 +500,22 @@ def wikidata_rows():
             try:
                 bs = wd_query(qid, deep=True)
             except Exception as e:
-                log(f'  {label}：下の分類までの検索が重いので、直接の分類だけで探す', str(e)[:100])
+                # 重すぎて止まった時：細かい分類の一覧を取り、30個ずつに分けて探す
+                log(f'  {label}：一度に探すと重いので、細かい分類ごとに分けて探す', str(e)[:100])
                 time.sleep(5)
-                bs = wd_query(qid, deep=False)
+                bs = []
+                try:
+                    subs = wd_subclasses(qid)
+                    log(f'    細かい分類 {len(subs)} 個')
+                    for i in range(0, len(subs), 30):
+                        try:
+                            bs += wd_query(qid, classes=subs[i:i + 30])
+                        except Exception as e2:
+                            log('    一部読めない', str(e2)[:100])
+                        time.sleep(2)
+                except Exception as e3:
+                    log(f'  {label}：分類の一覧も読めないので、直接の分類だけで探す', str(e3)[:100])
+                    bs = wd_query(qid, deep=False)
         except Exception as e:
             log(f'  {label}：読めない', str(e)[:200]); continue
         n = 0
