@@ -24,7 +24,7 @@ MICHI-SHIRUBE 施設データの更新（GitHub Actions で毎月1回動く）
     Overture に同じ名前で300m以内のものがある時は Wikidata 側を捨てる（二重にしない）
   どれかが読めなかった時は、その分だけ足さずに続ける（駅は Overture のまま）
 """
-import csv, gzip, io, json, os, re, sys, time, unicodedata, urllib.parse, urllib.request, urllib.error, zipfile
+import csv, gzip, io, json, math, os, re, sys, time, unicodedata, urllib.parse, urllib.request, urllib.error, zipfile
 from datetime import date
 
 import duckdb
@@ -284,7 +284,9 @@ def n02_rows(feats):
         nm = name if name.endswith('駅') else name + '駅'
         lng = sum(e['xs']) / len(e['xs']); lat = sum(e['ys']) / len(e['ys'])
         addr = '・'.join(e['lines'])[:300] or None
-        rows.append((f'n02:{g}:{name}', 'JP', 'station', nm, None, addr, lat, lng, N02_SRC))
+        # 知名度：乗り入れている路線・会社の数が多いほど高い（東京駅・新宿駅など）
+        pop = min(1.0, 0.15 + 0.08 * len(e['lines']))
+        rows.append((f'n02:{g}:{name}', 'JP', 'station', nm, None, addr, lat, lng, N02_SRC, pop))
     return rows
 
 
@@ -349,7 +351,7 @@ def n06_rows():
         if key in seen:
             continue
         seen.add(key)
-        rows.append((f'n06:{nm}:{m[1]:.4f}:{m[0]:.4f}', 'JP', 'ic', nm, None, kind, m[1], m[0], 'MLIT N06'))
+        rows.append((f'n06:{nm}:{m[1]:.4f}:{m[0]:.4f}', 'JP', 'ic', nm, None, kind, m[1], m[0], 'MLIT N06', 0.2))
     log(f'  IC・JCT：{len(rows)} 件（終わった設置期間 {ended} 件は入れない／種別ごとの数 {kinds}）')
     return rows, url
 
@@ -375,7 +377,8 @@ def p04_rows():
         addr = str(props.get('P04_003') or '').strip()
         if _code(props.get('P04_009')) == '1':
             addr = (addr + ' 救急告示病院').strip()
-        rows.append((f'p04:{name}:{m[1]:.5f}:{m[0]:.5f}', 'JP', 'hospital', name, None, addr or None, m[1], m[0], 'MLIT P04'))
+        pop = 0.25 if _code(props.get('P04_009')) == '1' else 0.15
+        rows.append((f'p04:{name}:{m[1]:.5f}:{m[0]:.5f}', 'JP', 'hospital', name, None, addr or None, m[1], m[0], 'MLIT P04', pop))
     log(f'  病院：{len(rows)} 件（医療機関分類ごとの数 {classes}）')
     return rows, url
 
@@ -407,7 +410,7 @@ def c28_rows():
             continue
         seen.add(name)
         nm = name if re.search(r'(空港|飛行場|ヘリポート)$', name) else name + '空港'
-        rows.append((f'c28:{aid or name}', 'JP', 'airport', nm, None, None, m[1], m[0], 'MLIT C28'))
+        rows.append((f'c28:{aid or name}', 'JP', 'airport', nm, None, None, m[1], m[0], 'MLIT C28', 0.6))
     log(f'  空港：{len(rows)} 件')
     return rows, url
 
@@ -470,8 +473,8 @@ def wd_query(qid, deep=True, classes=None):
     else:
         target = '?item ' + ('wdt:P31/wdt:P279*' if deep else 'wdt:P31') + f' wd:{qid}'
     sparql = f"""
-SELECT ?item ?ja ?en ?coord ?adminJa WHERE {{
-  {target} ; wdt:P17 wd:Q17 ; wdt:P625 ?coord ; rdfs:label ?ja .
+SELECT ?item ?ja ?en ?coord ?adminJa ?sl WHERE {{
+  {target} ; wdt:P17 wd:Q17 ; wdt:P625 ?coord ; rdfs:label ?ja ; wikibase:sitelinks ?sl .
   FILTER(LANG(?ja) = "ja")
   OPTIONAL {{ ?item rdfs:label ?en . FILTER(LANG(?en) = "en") }}
   OPTIONAL {{ ?item wdt:P131 ?adm . ?adm rdfs:label ?adminJa . FILTER(LANG(?adminJa) = "ja") }}
@@ -530,7 +533,13 @@ def wikidata_rows():
             seen.add(item)
             en = b.get('en', {}).get('value') or None
             adm = b.get('adminJa', {}).get('value') or None
-            rows.append((f'wd:{item}', 'JP', cat, name, en, adm, p[1], p[0], 'Wikidata'))
+            # 知名度：Wikipedia に記事がある言語の数（Nominatim と同じ考え方）。80以上で1.0
+            try:
+                sl = int(b.get('sl', {}).get('value') or 0)
+            except ValueError:
+                sl = 0
+            pop = min(1.0, math.log1p(sl) / math.log1p(80))
+            rows.append((f'wd:{item}', 'JP', cat, name, en, adm, p[1], p[0], 'Wikidata', pop))
             n += 1
         log(f'  Wikidata {label}：{n} 件')
         info[-1] += f' → {n} 件'
@@ -545,28 +554,31 @@ def _nkey(name):
 
 
 def drop_near_dupes(base, extra, meters=300):
-    """extra のうち、base に同じ名前で meters 以内のものがあれば捨てる"""
+    """extra のうち、base に同じ名前で meters 以内のものがあれば捨てる。
+    捨てた分の知名度（pop）は、重なった base の方に移す（戻り値の boosts：base の id → pop）"""
     grid = {}
     for r in base:
         grid.setdefault((_nkey(r[3]), round(r[6], 2), round(r[7], 2)), []).append(r)
-    out, dropped = [], 0
+    out, dropped, boosts = [], 0, {}
     for r in extra:
         k, la, ln = _nkey(r[3]), round(r[6], 2), round(r[7], 2)
-        dup = False
+        dup = None
         for dla in (-0.01, 0, 0.01):
             for dln in (-0.01, 0, 0.01):
                 for o in grid.get((k, round(la + dla, 2), round(ln + dln, 2)), []):
                     dy = (o[6] - r[6]) * 111000
                     dx = (o[7] - r[7]) * 111000 * 0.8
                     if dx * dx + dy * dy < meters * meters:
-                        dup = True; break
+                        dup = o; break
                 if dup: break
             if dup: break
-        if dup:
+        if dup is not None:
             dropped += 1
+            if len(r) > 9 and r[9]:
+                boosts[dup[0]] = max(boosts.get(dup[0], 0.0), r[9])
         else:
             out.append(r)
-    return out, dropped
+    return out, dropped, boosts
 
 
 def add_jp_extras(rows, stats):
@@ -581,9 +593,11 @@ def add_jp_extras(rows, stats):
             stats.append(f'JP {label}: 失敗 {str(e)[:120]}')
     try:
         wd, info = wikidata_rows()
-        wd, dropped = drop_near_dupes(rows, wd)
+        wd, dropped, boosts = drop_near_dupes(rows, wd)
+        if boosts:
+            rows = [r[:9] + (max(r[9] if len(r) > 9 else 0.0, boosts[r[0]]),) if r[0] in boosts else r for r in rows]
         rows = rows + wd
-        stats.append(f'JP Wikidata: {len(wd)} 件（Overture などと重なる {dropped} 件は捨てた）')
+        stats.append(f'JP Wikidata: {len(wd)} 件（Overture などと重なる {dropped} 件は捨て、知名度だけ {len(boosts)} 件に移した）')
         stats.extend('  ' + i for i in info)
     except Exception as e:
         log('Wikidata で失敗、足さずに続ける:', str(e)[:300])
@@ -618,7 +632,7 @@ def sb_request(method, path, body=None, prefer=None):
 def upload(country, rows):
     """置き場所（places_stage）に入れてから、2万件ずつ本番（places）に移し、最後に古いデータを消す
     （1回の処理を短くして、Supabase の時間切れで止まらないようにする。途中で失敗しても本番は空にならない）"""
-    cols = ['id', 'country', 'cat', 'name', 'name_en', 'addr', 'lat', 'lng', 'src']
+    cols = ['id', 'country', 'cat', 'name', 'name_en', 'addr', 'lat', 'lng', 'src', 'pop']
     # 前回の残りを空にする
     while True:
         n = sb_request('POST', '/rest/v1/rpc/places_stage_clear_chunk', {'p_country': country, 'p_n': 20000})
@@ -647,7 +661,8 @@ def upload(country, rows):
             break
         cleared += n
         log(f'  古いデータを消した {cleared} 件')
-    log(f'{country}: places を入れ替えた（新しく {moved} 件、古い {cleared} 件を消した）')
+    n = sb_request('POST', '/rest/v1/rpc/places_finalize', {'p_country': country})
+    log(f'{country}: places を入れ替えた（新しく {moved} 件、古い {cleared} 件を消した、同じ名前の数を {n} 件更新）')
 
 
 def main():
@@ -665,7 +680,7 @@ def main():
 
     stats = [f'Overture release: {rel}', f'min confidence: {MIN_CONF}', '']
     for country in COUNTRIES:
-        rows = extract(con, path, country)
+        rows = [tuple(r) + (0.0,) for r in extract(con, path, country)]   # 10番目：知名度（Overture は 0）
         if country == 'JP':
             rows, n02url = replace_jp_stations(rows)
             stats.append(f'JP stations: {"国土数値情報 " + n02url if n02url else "Overture（国土数値情報が使えなかった）"}')
@@ -678,7 +693,7 @@ def main():
             stats.append(f'  {c}: {n}')
         with gzip.open(os.path.join(OUT_DIR, f'places_{country}.csv.gz'), 'wt', encoding='utf-8', newline='') as f:
             w = csv.writer(f)
-            w.writerow(['id', 'country', 'cat', 'name', 'name_en', 'addr', 'lat', 'lng', 'src'])
+            w.writerow(['id', 'country', 'cat', 'name', 'name_en', 'addr', 'lat', 'lng', 'src', 'pop'])
             w.writerows(rows)
         if DRY_RUN:
             log(f'{country}: DRY_RUN なので Supabase には入れない')
