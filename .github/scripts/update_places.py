@@ -20,7 +20,7 @@ MICHI-SHIRUBE 施設データの更新（GitHub Actions で毎月1回動く）
   ・IC・スマートIC・JCT … 国土数値情報（高速道路時系列 N06、今あるものだけ＝現況として使う時は CC BY 4.0）
   ・病院 … 国土数値情報（医療機関 P04、CC BY 4.0）。診療所・歯科は数が多すぎるので入れない
   ・空港 … 国土数値情報（空港 C28、商用可）
-  ・道の駅・SA・PA・温泉・山・滝・湖・城・神社・寺・博物館・美術館・動物園・水族館・遊園地 … Wikidata（CC0）
+  ・道の駅・SA・PA・温泉・山・滝・湖・城・神社・寺・博物館・美術館・動物園・水族館・遊園地・塔・公園・観光地（日本語の別名も） … Wikidata（CC0）
     Overture に同じ名前で300m以内のものがある時は Wikidata 側を捨てる（二重にしない）
   どれかが読めなかった時は、その分だけ足さずに続ける（駅は Overture のまま）
 """
@@ -437,7 +437,11 @@ WD_CLASSES = [
     ('sight', 'Q2281788',  '水族館'),
     ('sight', 'Q194195',   '遊園地'),
     ('sight', None,        '展望台'),
+    ('sight', 'Q12518',    '塔'),
+    ('sight', 'Q22698',    '公園'),
+    ('sight', 'Q570116',   '観光地'),
 ]
+WD_ALT_MAX = 8          # 別名は1か所につき8個まで
 
 
 def wd_get(url, timeout=90):
@@ -482,6 +486,46 @@ SELECT ?item ?ja ?en ?coord ?adminJa ?sl WHERE {{
 }}"""
     url = 'https://query.wikidata.org/sparql?' + urllib.parse.urlencode({'query': sparql, 'format': 'json'})
     return wd_get(url, timeout=120).get('results', {}).get('bindings', [])
+
+
+def wd_alt_labels(items):
+    """Wikidata の日本語の別名（例：鹿苑寺 → 金閣寺）。200件ずつまとめて聞く。戻り値：項目 → 別名のリスト"""
+    out = {}
+    for i in range(0, len(items), 200):
+        vals = ' '.join('wd:' + q for q in items[i:i + 200])
+        sparql = f'SELECT ?item ?alt WHERE {{ VALUES ?item {{ {vals} }} ?item skos:altLabel ?alt . FILTER(LANG(?alt) = "ja") }}'
+        url = 'https://query.wikidata.org/sparql'
+        for attempt in range(3):
+            try:
+                req = urllib.request.Request(url, data=urllib.parse.urlencode({'query': sparql, 'format': 'json'}).encode(),
+                                             headers={'User-Agent': WD_UA, 'Accept': 'application/sparql-results+json',
+                                                      'Content-Type': 'application/x-www-form-urlencoded'})
+                with urllib.request.urlopen(req, timeout=120) as r:
+                    bs = json.loads(r.read().decode('utf-8')).get('results', {}).get('bindings', [])
+                for b in bs:
+                    q = b['item']['value'].rsplit('/', 1)[-1]
+                    a = (b.get('alt', {}).get('value') or '').strip()
+                    if a:
+                        out.setdefault(q, []).append(a)
+                break
+            except Exception as e:
+                if attempt == 2:
+                    log('    別名の一部が読めない', str(e)[:100])
+                time.sleep(3 * (attempt + 1))
+        time.sleep(1)
+    return out
+
+
+def _alt_join(name, alts):
+    """別名を空白でつなぐ（名前と同じもの・重なるものは外す）"""
+    seen, keep = {_nkey(name)}, []
+    for a in alts:
+        k = _nkey(a)
+        if k and k not in seen and len(a) <= 40:
+            seen.add(k); keep.append(a.replace(' ', '').replace('　', ''))
+        if len(keep) >= WD_ALT_MAX:
+            break
+    return ' '.join(keep) or None
 
 
 def _pt(wkt):
@@ -539,11 +583,21 @@ def wikidata_rows():
             except ValueError:
                 sl = 0
             pop = min(1.0, math.log1p(sl) / math.log1p(80))
-            rows.append((f'wd:{item}', 'JP', cat, name, en, adm, p[1], p[0], 'Wikidata', pop))
+            rows.append((f'wd:{item}', 'JP', cat, name, en, adm, p[1], p[0], 'Wikidata', pop, None))
             n += 1
         log(f'  Wikidata {label}：{n} 件')
         info[-1] += f' → {n} 件'
         time.sleep(2)
+    # 11番目：別名（Wikidata の日本語の別名。名前と同じように探せる）
+    try:
+        alts = wd_alt_labels([r[0][3:] for r in rows])
+        rows = [r[:10] + (_alt_join(r[3], alts.get(r[0][3:], [])),) for r in rows]
+        n = sum(1 for r in rows if r[10])
+        log(f'  Wikidata 別名：{n} か所')
+        info.append(f'別名あり: {n} か所')
+    except Exception as e:
+        log('  Wikidata 別名で失敗、別名なしで続ける', str(e)[:200])
+        info.append(f'別名: 失敗 {str(e)[:120]}')
     return rows, info
 
 
@@ -555,7 +609,8 @@ def _nkey(name):
 
 def drop_near_dupes(base, extra, meters=300):
     """extra のうち、base に同じ名前で meters 以内のものがあれば捨てる。
-    捨てた分の知名度（pop）は、重なった base の方に移す（戻り値の boosts：base の id → pop）"""
+    捨てた分の知名度（pop）と別名（alt）は、重なった base の方に移す
+    （戻り値の boosts：base の id → (pop, 別名)）"""
     grid = {}
     for r in base:
         grid.setdefault((_nkey(r[3]), round(r[6], 2), round(r[7], 2)), []).append(r)
@@ -574,11 +629,32 @@ def drop_near_dupes(base, extra, meters=300):
             if dup: break
         if dup is not None:
             dropped += 1
-            if len(r) > 9 and r[9]:
-                boosts[dup[0]] = max(boosts.get(dup[0], 0.0), r[9])
+            p0, a0 = boosts.get(dup[0], (0.0, None))
+            pop = max(p0, r[9] if len(r) > 9 and r[9] else 0.0)
+            alt = ' '.join(x for x in (a0, r[10] if len(r) > 10 else None) if x) or None
+            if pop or alt:
+                boosts[dup[0]] = (pop, alt)
         else:
             out.append(r)
     return out, dropped, boosts
+
+
+def _boost(r, pop, alt):
+    """知名度は大きい方、別名は足す（名前と同じものは外す）"""
+    old = r[10] if len(r) > 10 else None
+    alts = ((old or '') + ' ' + (alt or '')).split()
+    return r[:9] + (max(r[9] if len(r) > 9 and r[9] else 0.0, pop), _alt_join(r[3], alts))
+
+
+def fix_cols(rows):
+    """全部の行を11列にそろえる（Supabase に送る時、行ごとに列がちがうとエラーになる）"""
+    out = []
+    for r in rows:
+        r = tuple(r[:11]) + (None,) * (11 - len(r))
+        if r[9] is None:
+            r = r[:9] + (0.0,) + r[10:]
+        out.append(r)
+    return out
 
 
 def add_jp_extras(rows, stats):
@@ -595,7 +671,7 @@ def add_jp_extras(rows, stats):
         wd, info = wikidata_rows()
         wd, dropped, boosts = drop_near_dupes(rows, wd)
         if boosts:
-            rows = [r[:9] + (max(r[9] if len(r) > 9 else 0.0, boosts[r[0]]),) if r[0] in boosts else r for r in rows]
+            rows = [_boost(r, *boosts[r[0]]) if r[0] in boosts else r for r in rows]
         rows = rows + wd
         stats.append(f'JP Wikidata: {len(wd)} 件（Overture などと重なる {dropped} 件は捨て、知名度だけ {len(boosts)} 件に移した）')
         stats.extend('  ' + i for i in info)
@@ -632,7 +708,7 @@ def sb_request(method, path, body=None, prefer=None):
 def upload(country, rows):
     """置き場所（places_stage）に入れてから、2万件ずつ本番（places）に移し、最後に古いデータを消す
     （1回の処理を短くして、Supabase の時間切れで止まらないようにする。途中で失敗しても本番は空にならない）"""
-    cols = ['id', 'country', 'cat', 'name', 'name_en', 'addr', 'lat', 'lng', 'src', 'pop']
+    cols = ['id', 'country', 'cat', 'name', 'name_en', 'addr', 'lat', 'lng', 'src', 'pop', 'alt']
     # 前回の残りを空にする
     while True:
         n = sb_request('POST', '/rest/v1/rpc/places_stage_clear_chunk', {'p_country': country, 'p_n': 20000})
@@ -685,6 +761,7 @@ def main():
             rows, n02url = replace_jp_stations(rows)
             stats.append(f'JP stations: {"国土数値情報 " + n02url if n02url else "Overture（国土数値情報が使えなかった）"}')
             rows = add_jp_extras(rows, stats)
+        rows = fix_cols(rows)
         counts = {}
         for r in rows:
             counts[r[2]] = counts.get(r[2], 0) + 1
@@ -693,7 +770,7 @@ def main():
             stats.append(f'  {c}: {n}')
         with gzip.open(os.path.join(OUT_DIR, f'places_{country}.csv.gz'), 'wt', encoding='utf-8', newline='') as f:
             w = csv.writer(f)
-            w.writerow(['id', 'country', 'cat', 'name', 'name_en', 'addr', 'lat', 'lng', 'src', 'pop'])
+            w.writerow(['id', 'country', 'cat', 'name', 'name_en', 'addr', 'lat', 'lng', 'src', 'pop', 'alt'])
             w.writerows(rows)
         if DRY_RUN:
             log(f'{country}: DRY_RUN なので Supabase には入れない')
