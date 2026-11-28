@@ -5770,10 +5770,17 @@ async function searchAddress(){
       lat:p.lat, lng:p.lng, dist:calcDist(center.lat,center.lng,p.lat,p.lng) });
   });
 
+  // v176：並び順は「住所 → 自分のポイント（近い順） → 施設（サーバーの点数順） → 地図の場所（近い順）」
+  results.sort((a,b)=>a.dist-b.dist);
+  const addrResults = [];
   try{
-    // v175：施設テーブル（無料・回数制限なし）はいつも探す。自分のポイントと同じ場所（同じ名前で100m以内）は出さない
-    // Geoapify（1日の回数制限あり）は、自分のポイントにも施設テーブルにも無い時だけ
-    const db = await placesSearch(q, center);
+    // 施設テーブル（無料・回数制限なし）はいつも探す。住所らしい言葉なら住所も同時に探す
+    // Geoapify（1日の回数制限あり）は、どこにも無い時だけ
+    const [db, ad] = await Promise.all([ placesSearch(q, center), looksLikeAddress(q) ? addressSearch(q) : null ]);
+    if(ad){
+      addrResults.push({ kind:'place', via:'addr', cat:'addr', name: ad.name, memo:'',
+        lat: ad.lat, lng: ad.lng, dist: calcDist(center.lat,center.lng,ad.lat,ad.lng) });
+    }
     if(db && db.length){
       const normName = s => (s||'').normalize('NFKC').toLowerCase().replace(/^道の駅/,'').replace(/[\s\-‐－・･]/g,'');
       const own = results.slice();
@@ -5785,6 +5792,7 @@ async function searchAddress(){
           lat: pl.lat, lng: pl.lng, dist: calcDist(center.lat,center.lng,pl.lat,pl.lng) });
       });
     }
+    if(addrResults.length) results.unshift(...addrResults);
     if(!results.length){
       const r = await geoSearch(q, center);
       if(r.status === 'ok'){
@@ -5805,7 +5813,8 @@ async function searchAddress(){
   }
 
   if(!results.length){ alert(t('alert_search_notfound')); return; }
-  results.sort((a,b)=>a.dist-b.dist);
+  // 地図の場所（Geoapify）だけの時は近い順。施設は サーバーの点数順のまま（並べ替えない）
+  if(results.every(r=>r.kind==='place' && !r.via)) results.sort((a,b)=>a.dist-b.dist);
   searchResults = results;
   renderSearchResults();
   followMode=false;
@@ -5818,15 +5827,42 @@ async function searchAddress(){
 // 施設テーブルで探す（Supabase の search_places）。戻り値：配列（失敗した時は null → Geoapify へ）
 // 施設の種類ごとの絵文字（検索結果の一覧に出す）
 const PLACE_CAT_EMOJI = { conveni:'🏪', fuel:'⛽', ev:'🔌', station:'🚉', rest:'🅿️', hotel:'🏨', onsen:'♨️', sight:'📸',
-  ic:'🛣️', hospital:'🏥', airport:'✈️' };   // v174：IC・病院・空港
+  ic:'🛣️', hospital:'🏥', airport:'✈️', addr:'🏠' };   // v174：IC・病院・空港／v176：住所
+// 今見ている地図の半径（km）。近さの効き方をこれで変える（街を見ている時は近く、日本全体なら遠くも）
+function mapRadiusKm(){
+  try{
+    const c = map.getCenter(), z = map.getZoom(), sz = map.getSize();
+    const mpp = 156543.03392 * Math.cos(c.lat * Math.PI / 180) / Math.pow(2, z);
+    const r = Math.hypot(sz.x, sz.y) / 2 * mpp / 1000;
+    return (isFinite(r) && r > 0) ? Math.round(r * 10) / 10 : null;
+  }catch(e){ return null; }
+}
 async function placesSearch(q, center){
   try{
     const res = await supabaseFetch('/rest/v1/rpc/search_places', { method:'POST',
-      body: JSON.stringify({ q, clat: center.lat, clng: center.lng, lim: 10 }) });
+      body: JSON.stringify({ q, clat: center.lat, clng: center.lng, lim: 10, rkm: mapRadiusKm() }) });
     if(!res.ok) return null;
     const data = await res.json();
     return Array.isArray(data) ? data : null;
   }catch(e){ console.warn('placesSearch', e); return null; }
+}
+
+// 住所で探す（v176）：Geolonia の住所正規化（MIT。住所データは「アドレス・ベース・レジストリ」（デジタル庁）をもとに Geolonia が作成、CC BY 4.0）
+//   都道府県・市区町村・町丁目・番地まで分解して位置を出す。止まっていても検索全体は止めない（4秒で諦める）
+function looksLikeAddress(q){
+  const s = (q||'').normalize('NFKC');
+  return /(都|道|府|県|市|区|町|村|郡|丁目|番地|番|号)/.test(s) && !/駅$/.test(s) && !/道の駅/.test(s)
+      || /\d+\s*[-ー−]\s*\d+/.test(s);
+}
+let _normJa = null;
+async function addressSearch(q){
+  try{
+    if(!_normJa) _normJa = await import('./vendor/normalize-ja.mjs');
+    const r = await Promise.race([ _normJa.normalize(q), new Promise(res=>setTimeout(()=>res(null), 4000)) ]);
+    if(!r || !r.point || !(r.level >= 2) || !isFinite(r.point.lat)) return null;
+    const name = [r.pref, r.city, r.town, r.addr].filter(Boolean).join('');
+    return { name: name || q, lat: r.point.lat, lng: r.point.lng, level: r.level };
+  }catch(e){ console.warn('addressSearch', e); return null; }
 }
 
 // Geoapify で探す（Supabase の関数 geo-search 経由）。戻り値：{ status:'ok'|'user_limit'|'global_limit'|'login'|'error', results }
@@ -5876,10 +5912,12 @@ function renderSearchResults(){
   // 地図の場所（Geoapify）の結果がある時は、出典を出す（無料プランの決まり）
   const dbCredit = searchResults.some(r=>r.via==='db')
     ? `<div style="font-size:10px;color:#7e7e8b;padding:2px 8px 4px;">© <a href="https://overturemaps.org/" target="_blank" rel="noopener" style="color:#9ab;">Overture Maps Foundation</a> · Foursquare (<a href="./PLACES_DATA_LICENSE.txt" target="_blank" rel="noopener" style="color:#9ab;">Apache 2.0</a>) · <a href="./PLACES_DATA_LICENSE.txt" target="_blank" rel="noopener" style="color:#9ab;">国土数値情報（国土交通省）を加工して作成</a> · Wikidata</div>` : '';
-  const geoCredit = searchResults.some(r=>r.kind==='place' && r.via!=='db')
+  const addrCredit = searchResults.some(r=>r.via==='addr')
+    ? `<div style="font-size:10px;color:#7e7e8b;padding:2px 8px 4px;">住所：<a href="https://github.com/geolonia/japanese-addresses-v2" target="_blank" rel="noopener" style="color:#9ab;">Geolonia 住所データ</a>（「アドレス・ベース・レジストリ」（デジタル庁）をもとに株式会社 Geolonia が作成、CC BY 4.0）</div>` : '';
+  const geoCredit = searchResults.some(r=>r.kind==='place' && !r.via)
     ? `<div style="font-size:10px;color:#7e7e8b;padding:2px 8px 4px;">Powered by <a href="https://www.geoapify.com/" target="_blank" rel="noopener" style="color:#9ab;">Geoapify</a> · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:#9ab;">OpenStreetMap</a> contributors</div>` : '';
   el.innerHTML = `<div class="sr-head"><span>${t('search_results_title',{n:searchResults.length})}</span>
-      <button class="ml-btn" style="padding:2px 8px;" onclick="clearSearchResults()">✕</button></div>` + dbCredit + geoCredit +
+      <button class="ml-btn" style="padding:2px 8px;" onclick="clearSearchResults()">✕</button></div>` + addrCredit + dbCredit + geoCredit +
     searchResults.map((r,i)=>`<div class="sr-row" style="border-left:3px solid ${SEARCH_COLORS[r.kind]||SEARCH_COLORS.place};">
       <div class="sr-name" onclick="gotoSearchResult(${i})">${
         r.kind==='place' ? (PLACE_CAT_EMOJI[r.cat] || '📍') : `<span style="display:inline-flex;vertical-align:middle;">${iconHTML(r.icon,16)}</span>`
