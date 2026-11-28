@@ -14,6 +14,7 @@ MICHI-SHIRUBE 施設データの更新（GitHub Actions で毎月1回動く）
   DRY_RUN               … "true" なら Supabase に入れず、件数だけ出す
   OVERTURE_RELEASE      … 版を手で決めたい時だけ（例 2026-11-18.0）
   N02_URL               … 日本の駅データ（国土数値情報 鉄道）の zip を手で決めたい時だけ
+  PLACES_MODE           … "count_food" なら飲食店の数を数えるだけ（Supabase には何もしない）
 
 日本だけ、次のデータを足す（どれも商用利用できるもの）
   ・駅 … 国土数値情報（鉄道 N02、CC BY 4.0）。Overture の駅は捨てる（ホーム・出口・店や、遠くにずれた「東京駅」が多いため）
@@ -33,6 +34,7 @@ OUT_DIR = 'places_out'
 COUNTRIES = [c.strip().upper() for c in os.environ.get('PLACES_COUNTRIES', 'JP').split(',') if c.strip()]
 MIN_CONF = float(os.environ.get('PLACES_MIN_CONFIDENCE', '0.5') or 0.5)
 DRY_RUN = os.environ.get('DRY_RUN', 'false').strip().lower() == 'true'
+MODE = os.environ.get('PLACES_MODE', 'update').strip().lower() or 'update'
 SB_URL = os.environ.get('SUPABASE_URL', '').strip()
 # 「https://xxxx.supabase.co/rest/v1/」のように後ろに何か付いていても、「https://xxxx.supabase.co」だけにする
 if SB_URL:
@@ -741,8 +743,101 @@ def upload(country, rows):
     log(f'{country}: places を入れ替えた（新しく {moved} 件、古い {cleared} 件を消した、同じ名前の数を {n} 件更新）')
 
 
+# ---------------------------------------------------------------------
+# 数えるだけ：飲食店（PLACES_MODE=count_food）
+# ---------------------------------------------------------------------
+FOOD_WORDS = ['eat_and_drink', 'restaurant', 'cafe', 'coffee', 'fast_food', 'bakery', 'izakaya', 'ramen',
+              'sushi', 'noodle', 'udon', 'soba', 'diner', 'dessert', 'ice_cream', 'donut', 'burger', 'pizza',
+              'yakiniku', 'curry', 'tea_room', 'bistro', 'gyudon', 'family_style', 'buffet']
+
+
+def food_count(con, path, country):
+    """飲食店の数を、種類別・チェーン名別に数える（データベースには入れない）"""
+    xmin, ymin, xmax, ymax = COUNTRY_BBOX[country]
+    cc = f"country = '{country}'"
+    if country == 'JP':
+        cc += " OR (country IS NULL AND regexp_matches(name, '[ぁ-んァ-ヶ一-龯]'))"
+    food = ' OR '.join(f"strpos(k, '{w}') > 0" for w in FOOD_WORDS)
+    tries = [
+        ("lower(concat_ws(',', basic_category, taxonomy.primary, array_to_string(taxonomy.hierarchy, ','), "
+         "array_to_string(taxonomy.alternates, ',')))", 'taxonomy.primary', "brand.names.primary",
+         "AND coalesce(operating_status, '') <> 'permanently_closed'"),
+        ("lower(concat_ws(',', basic_category, taxonomy.primary, array_to_string(taxonomy.hierarchy, ','), "
+         "array_to_string(taxonomy.alternates, ',')))", 'taxonomy.primary', 'NULL',
+         "AND coalesce(operating_status, '') <> 'permanently_closed'"),
+        ("lower(concat_ws(',', categories.primary, array_to_string(categories.alternate, ',')))",
+         'categories.primary', 'NULL', ''),
+    ]
+    last = None
+    for k, prim, brand, closed in tries:
+        try:
+            t0 = time.time()
+            con.execute('DROP TABLE IF EXISTS food')
+            con.execute(f"""
+            CREATE TEMP TABLE food AS
+            WITH src AS (
+              SELECT names.primary AS name, addresses[1].country AS country, {prim} AS prim,
+                     {brand} AS brand, {k} AS k
+              FROM read_parquet('{path}')
+              WHERE bbox.xmin >= {xmin} AND bbox.xmax <= {xmax} AND bbox.ymin >= {ymin} AND bbox.ymax <= {ymax}
+                AND coalesce(confidence, 1) >= {MIN_CONF} {closed}
+            )
+            SELECT name, prim, brand,
+                   split_part(trim(replace(name, '　', ' ')), ' ', 1) AS head FROM src
+            WHERE ({cc}) AND name IS NOT NULL AND name <> '' AND ({food})
+            """)
+            log(f'{country}: 飲食店を取り出した（{time.time() - t0:.0f}秒）')
+            break
+        except duckdb.Error as e:
+            last = e
+            log('この形では読めない →', str(e).splitlines()[0][:200])
+    else:
+        raise SystemExit(f'取り出し失敗: {last}')
+
+    q = lambda sql: con.execute(sql).fetchall()
+    out = []
+    total = q('SELECT count(*) FROM food')[0][0]
+    out.append(f'[{country}] 飲食店 合計 {total} 件')
+    out.append('')
+    out.append('■ 種類別（多い順 40）')
+    for p, n in q('SELECT coalesce(prim, \'(なし)\'), count(*) n FROM food GROUP BY 1 ORDER BY n DESC LIMIT 40'):
+        out.append(f'  {n:>7}  {p}')
+    out.append('')
+    out.append('■ チェーン店の見当（名前の最初の言葉＝空白の前 が同じ店の数で分けた件数）')
+    for th in (5, 10, 20, 50, 100):
+        names, rows = q(f'SELECT count(*), coalesce(sum(n), 0) FROM (SELECT head, count(*) n FROM food GROUP BY head) WHERE n >= {th}')[0]
+        out.append(f'  {th:>3} 店以上：{names:>5} チェーン・合計 {rows:>7} 件')
+    nb = q('SELECT count(*) FROM food WHERE brand IS NOT NULL')[0][0]
+    out.append('')
+    out.append(f'■ ブランド名あり：{nb} 件（多い順 80）')
+    for b, n in q('SELECT brand, count(*) n FROM food WHERE brand IS NOT NULL GROUP BY 1 ORDER BY n DESC LIMIT 80'):
+        out.append(f'  {n:>6}  {b}')
+    out.append('')
+    out.append('■ 名前の最初の言葉（多い順 80）')
+    for nm, n in q('SELECT head, count(*) n FROM food GROUP BY 1 ORDER BY n DESC LIMIT 80'):
+        out.append(f'  {n:>6}  {nm}')
+    for kw in ('スターバックス', 'スタバ', 'starbucks', 'マクドナルド', 'すき家', 'ドトール', 'コメダ'):
+        n = q(f"SELECT count(*) FROM food WHERE strpos(lower(name), lower('{kw}')) > 0")[0][0]
+        out.append(f'  名前に「{kw}」をふくむ：{n} 件')
+    return out
+
+
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
+    if MODE == 'count_food':
+        con = duckdb.connect()
+        con.execute('INSTALL httpfs; LOAD httpfs;')
+        con.execute("SET s3_region='us-west-2';")
+        rel = latest_release(con)
+        path = f's3://overturemaps-us-west-2/release/{rel}/theme=places/type=place/*.parquet'
+        lines = [f'Overture release: {rel}', f'min confidence: {MIN_CONF}', '数えるだけ（Supabase には何もしない）', '']
+        for country in COUNTRIES:
+            lines += food_count(con, path, country) + ['']
+        txt = '\n'.join(lines)
+        log('\n' + txt)
+        with open(os.path.join(OUT_DIR, 'food_count.txt'), 'w', encoding='utf-8') as f:
+            f.write(txt + '\n')
+        return
     if not DRY_RUN and (not SB_URL or not SB_KEY):
         raise SystemExit('SUPABASE_URL と SUPABASE_SECRET_KEY を GitHub の Secrets に入れてください')
     con = duckdb.connect()
