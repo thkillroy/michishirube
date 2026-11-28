@@ -19,6 +19,10 @@ on:
         description: '国（カンマ区切り。例 JP や JP,TW）'
         required: false
         default: 'JP'
+      mode:
+        description: 'update ＝ ふつうの更新 ／ count_food ＝ 飲食店の数を数えるだけ（Supabase には何もしない）'
+        required: false
+        default: 'update'
 
 permissions:
   contents: read
@@ -44,6 +48,7 @@ jobs:
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
           PLACES_COUNTRIES: ${{ github.event.inputs.countries || 'JP' }}
           PLACES_MIN_CONFIDENCE: '0.5'
+          PLACES_MODE: ${{ github.event.inputs.mode || 'update' }}
         run: python .github/scripts/update_places.py
 
       - name: Save result files
