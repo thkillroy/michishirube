@@ -23,6 +23,9 @@ MICHI-SHIRUBE 施設データの更新（GitHub Actions で毎月1回動く）
   ・空港 … 国土数値情報（空港 C28、商用可）
   ・道の駅・SA・PA・温泉・山・滝・湖・城・神社・寺・博物館・美術館・動物園・水族館・遊園地・塔・公園・観光地（日本語の別名も） … Wikidata（CC0）
     Overture に同じ名前で300m以内のものがある時は Wikidata 側を捨てる（二重にしない）
+  ・カフェ・飲食店 … Overture の飲食店のうち、主なチェーン店（CHAINS の名簿に名前が当てはまる店）だけ
+    （飲食店は日本だけで約62万件あり全部は入らないため。個人の店はアプリから Geoapify で探す）
+    同じチェーンで50m以内に2件ある時は1件にする（日本語の名前の方を残す）。別名にチェーンの日本語名・英語名を入れる
   どれかが読めなかった時は、その分だけ足さずに続ける（駅は Overture のまま）
 """
 import csv, gzip, io, json, math, os, re, sys, time, unicodedata, urllib.parse, urllib.request, urllib.error, zipfile
@@ -744,6 +747,234 @@ def upload(country, rows):
 
 
 # ---------------------------------------------------------------------
+# 飲食チェーン（日本）：(種類, 日本語の名前, 英語の名前, 名前に入っていたら当てはまる言葉)
+#   言葉は大文字小文字・空白・記号を無視して比べる。頭に ^ が付いた言葉は「名前の始まりが同じ」時だけ
+# ---------------------------------------------------------------------
+CHAINS = [
+    # カフェ・甘いもの
+    ('cafe', 'スターバックス', 'starbucks', ['スターバックス', 'starbucks']),
+    ('cafe', 'ドトール', 'doutor', ['ドトール', 'doutor']),
+    ('cafe', 'エクセルシオール カフェ', 'excelsior caffe', ['エクセルシオール', 'excelsior']),
+    ('cafe', 'コメダ珈琲', 'komeda', ['コメダ', 'komeda']),
+    ('cafe', 'タリーズ', 'tullys', ['タリーズ', 'tullys']),
+    ('cafe', 'サンマルクカフェ', 'st marc cafe', ['サンマルクカフェ', 'サンマルク', 'stmarc']),
+    ('cafe', '星乃珈琲店', 'hoshino coffee', ['星乃珈琲', 'hoshinocoffee']),
+    ('cafe', 'プロント', 'pronto', ['^プロント', '^pronto']),
+    ('cafe', 'カフェ・ベローチェ', 'caffe veloce', ['ベローチェ', 'veloce']),
+    ('cafe', '上島珈琲店', 'ueshima coffee', ['上島珈琲']),
+    ('cafe', 'ルノアール', 'renoir', ['喫茶室ルノアール', '^ルノアール']),
+    ('cafe', '珈琲館', 'coffee kan', ['^珈琲館']),
+    ('cafe', 'ブルーボトルコーヒー', 'blue bottle coffee', ['ブルーボトル', 'bluebottle']),
+    ('cafe', 'ベックスコーヒーショップ', 'becks coffee', ['ベックス', 'beckscoffee']),
+    ('cafe', 'カフェ・ド・クリエ', 'cafe de crie', ['ドクリエ', 'decrie']),
+    ('cafe', '倉式珈琲店', 'kurashiki coffee', ['倉式珈琲']),
+    ('cafe', 'ミスタードーナツ', 'mister donut', ['ミスタードーナツ', 'misterdonut', 'ミスド']),
+    ('cafe', 'クリスピー・クリーム・ドーナツ', 'krispy kreme', ['クリスピークリーム', 'krispykreme']),
+    ('cafe', 'サーティワン アイスクリーム', 'baskin robbins', ['サーティワン', 'baskinrobbins', 'バスキンロビンス']),
+    ('cafe', 'ゴンチャ', 'gong cha', ['ゴンチャ', 'gongcha', '貢茶']),
+    ('cafe', 'シャトレーゼ', 'chateraise', ['シャトレーゼ', 'chateraise']),
+    ('cafe', '不二家', 'fujiya', ['^不二家']),
+    ('cafe', '快活CLUB', 'kaikatsu club', ['快活club']),
+    # ハンバーガー・チキン・ピザ
+    ('food', 'マクドナルド', 'mcdonalds', ['マクドナルド', 'mcdonalds']),
+    ('food', 'モスバーガー', 'mos burger', ['モスバーガー', 'mosburger']),
+    ('food', 'ケンタッキーフライドチキン', 'kfc kentucky', ['ケンタッキー', 'kentucky', '^kfc']),
+    ('food', 'バーガーキング', 'burger king', ['バーガーキング', 'burgerking']),
+    ('food', 'ロッテリア', 'lotteria', ['ロッテリア', 'lotteria']),
+    ('food', 'ゼッテリア', 'zetteria', ['ゼッテリア', 'zetteria']),
+    ('food', 'フレッシュネスバーガー', 'freshness burger', ['フレッシュネス', 'freshnessburger']),
+    ('food', 'ファーストキッチン', 'first kitchen', ['ファーストキッチン', 'firstkitchen']),
+    ('food', 'ウェンディーズ', 'wendys', ['ウェンディーズ', 'wendys']),
+    ('food', 'ドミノ・ピザ', 'dominos pizza', ['ドミノピザ', 'dominos']),
+    ('food', 'ピザハット', 'pizza hut', ['ピザハット', 'pizzahut']),
+    ('food', 'ピザーラ', 'pizza la', ['ピザーラ', 'pizzala']),
+    ('food', 'ナポリの窯', 'napoli no kama', ['ナポリの窯']),
+    ('food', '築地銀だこ', 'gindaco', ['銀だこ', 'gindako', 'gindaco']),
+    # 牛丼・定食・弁当
+    ('food', '吉野家', 'yoshinoya', ['吉野家', 'yoshinoya']),
+    ('food', '松屋', 'matsuya', ['^松屋', '^matsuya']),
+    ('food', 'すき家', 'sukiya', ['すき家', 'sukiya']),
+    ('food', 'なか卯', 'nakau', ['なか卯', 'nakau']),
+    ('food', 'やよい軒', 'yayoiken', ['やよい軒', 'yayoiken']),
+    ('food', '大戸屋', 'ootoya', ['大戸屋', 'ootoya']),
+    ('food', '松のや', 'matsunoya', ['松のや', 'matsunoya']),
+    ('food', 'かつや', 'katsuya', ['^かつや', '^katsuya']),
+    ('food', 'とんかつ和幸', 'wako', ['とんかつ和幸', '^和幸']),
+    ('food', 'とんかつ新宿さぼてん', 'saboten', ['さぼてん', 'saboten']),
+    ('food', 'ほっともっと', 'hotto motto', ['ほっともっと', 'hottomotto']),
+    ('food', 'ほっかほっか亭', 'hokka hokka tei', ['ほっかほっか亭']),
+    ('food', 'キッチンオリジン', 'origin', ['キッチンオリジン', 'オリジン弁当', 'kitchenorigin']),
+    # ファミレス
+    ('food', 'ガスト', 'gusto', ['^ガスト', '^gusto']),
+    ('food', 'ステーキガスト', 'steak gusto', ['ステーキガスト']),
+    ('food', 'サイゼリヤ', 'saizeriya', ['サイゼリヤ', 'saizeriya']),
+    ('food', 'ジョイフル', 'joyfull', ['^ジョイフル', '^joyfull']),
+    ('food', 'デニーズ', 'dennys', ['デニーズ', 'dennys']),
+    ('food', 'ロイヤルホスト', 'royal host', ['ロイヤルホスト', 'royalhost']),
+    ('food', 'ココス', 'cocos', ['^ココス', '^cocos']),
+    ('food', 'バーミヤン', 'bamiyan', ['バーミヤン', 'bamiyan']),
+    ('food', 'ジョナサン', 'jonathans', ['^ジョナサン', '^jonathan']),
+    ('food', '夢庵', 'yumean', ['夢庵']),
+    ('food', 'しゃぶ葉', 'shabuyo', ['しゃぶ葉', 'shabuyo']),
+    ('food', 'びっくりドンキー', 'bikkuri donkey', ['びっくりドンキー', 'bikkuridonkey']),
+    ('food', 'ビッグボーイ', 'big boy', ['ビッグボーイ', 'bigboy']),
+    ('food', 'ジョリーパスタ', 'jolly pasta', ['ジョリーパスタ', 'jollypasta']),
+    ('food', '和食さと', 'sato', ['和食さと']),
+    ('food', '華屋与兵衛', 'hanaya yohei', ['華屋与兵衛']),
+    ('food', 'ステーキ宮', 'steak miya', ['ステーキ宮']),
+    ('food', 'いきなり!ステーキ', 'ikinari steak', ['いきなりステーキ', 'ikinaristeak']),
+    # 回転寿司
+    ('food', 'スシロー', 'sushiro', ['スシロー', 'sushiro']),
+    ('food', 'くら寿司', 'kura sushi', ['くら寿司', 'kurasushi']),
+    ('food', 'はま寿司', 'hama sushi', ['はま寿司', 'hamazushi', 'hamasushi']),
+    ('food', 'かっぱ寿司', 'kappa sushi', ['かっぱ寿司', 'kappasushi']),
+    ('food', 'すし銚子丸', 'choshimaru', ['銚子丸']),
+    ('food', '魚べい', 'uobei', ['魚べい', 'uobei']),
+    ('food', '元気寿司', 'genki sushi', ['元気寿司', 'genkisushi']),
+    # ラーメン・中華・うどん・そば・カレー
+    ('food', '日高屋', 'hidakaya', ['日高屋', 'hidakaya']),
+    ('food', '幸楽苑', 'kourakuen', ['幸楽苑', 'kourakuen']),
+    ('food', '天下一品', 'tenkaippin', ['天下一品', 'tenkaippin']),
+    ('food', 'ラーメン山岡家', 'yamaokaya', ['山岡家', 'yamaokaya']),
+    ('food', '丸源ラーメン', 'marugen ramen', ['丸源ラーメン']),
+    ('food', '来来亭', 'rairaitei', ['来来亭']),
+    ('food', 'ラーメン魁力屋', 'kairikiya', ['魁力屋']),
+    ('food', '花月嵐', 'kagetsu arashi', ['花月嵐']),
+    ('food', '一蘭', 'ichiran', ['^一蘭', 'ichiran']),
+    ('food', '一風堂', 'ippudo', ['一風堂', 'ippudo']),
+    ('food', 'スガキヤ', 'sugakiya', ['スガキヤ', 'sugakiya']),
+    ('food', 'リンガーハット', 'ringer hut', ['リンガーハット', 'ringerhut']),
+    ('food', '大阪王将', 'osaka ohsho', ['大阪王将', '大阪王將', 'osakaohsho']),
+    ('food', '餃子の王将', 'gyoza no ohsho', ['餃子の王将', 'ohsho']),
+    ('food', '丸亀製麺', 'marugame seimen', ['丸亀製麺', 'marugame']),
+    ('food', 'はなまるうどん', 'hanamaru udon', ['はなまるうどん', 'hanamaruudon']),
+    ('food', '資さんうどん', 'sukesan udon', ['資さんうどん']),
+    ('food', '山田うどん', 'yamada udon', ['山田うどん']),
+    ('food', 'ゆで太郎', 'yudetaro', ['ゆで太郎']),
+    ('food', '名代 富士そば', 'fuji soba', ['富士そば']),
+    ('food', '小諸そば', 'komoro soba', ['小諸そば']),
+    ('food', 'CoCo壱番屋', 'coco ichibanya', ['coco壱番屋', 'cocoichibanya', 'ココイチ', 'ココ壱']),
+    ('food', 'ゴーゴーカレー', 'go go curry', ['ゴーゴーカレー', 'gogocurry']),
+    # 焼肉・居酒屋・焼き鳥
+    ('food', '焼肉きんぐ', 'yakiniku king', ['焼肉きんぐ']),
+    ('food', '牛角', 'gyukaku', ['牛角', 'gyukaku']),
+    ('food', '安楽亭', 'anrakutei', ['安楽亭']),
+    ('food', 'あみやき亭', 'amiyakitei', ['あみやき亭']),
+    ('food', '鳥貴族', 'torikizoku', ['鳥貴族', 'torikizoku']),
+    ('food', 'やきとり大吉', 'daikichi', ['やきとり大吉']),
+    ('food', '串カツ田中', 'kushikatsu tanaka', ['串カツ田中']),
+    ('food', '磯丸水産', 'isomaru suisan', ['磯丸水産']),
+    ('food', '養老乃瀧', 'yoronotaki', ['養老乃瀧']),
+    ('food', '白木屋', 'shirokiya', ['^白木屋']),
+    ('food', '魚民', 'uotami', ['魚民']),
+    ('food', '笑笑', 'warawara', ['^笑笑']),
+    ('food', '赤から', 'akakara', ['赤から']),
+]
+CHAIN_SKIP = ['アルバイト', 'バイト', '求人', '採用', '本社', '本部', '工場', '駐車場']
+# 名前がこれで始まる店はチェーンとみなさない（「ガスト」「松屋」と始まりが同じ別の店）
+CHAIN_NOT_PREFIX = ['ガストロ', 'gastro', '松屋銀座', '松屋浅草']
+
+
+def _ckey(s):
+    s = unicodedata.normalize('NFKC', s or '').lower()
+    return re.sub(r'[\s\-‐‑‒–—―−・·.,\'’`&/()「」『』【】!?！？〈〉<>＆]', '', s)
+
+
+_CHAIN_IDX = []
+for _cat, _ja, _en, _pats in CHAINS:
+    for _p in _pats:
+        _CHAIN_IDX.append((_p.startswith('^'), _ckey(_p.lstrip('^')), _cat, _ja, _en))
+_SKIP = [_ckey(w) for w in CHAIN_SKIP]
+_NOTP = tuple(_ckey(w) for w in CHAIN_NOT_PREFIX)
+
+
+def chain_of(name):
+    """名前がチェーンの名簿に当てはまれば (種類, 日本語名, 英語名)。当てはまらなければ None"""
+    k = _ckey(name)
+    if not k or any(w in k for w in _SKIP) or k.startswith(_NOTP):
+        return None
+    for head, p, cat, ja, en in _CHAIN_IDX:
+        if (k.startswith(p) if head else p in k):
+            return cat, ja, en
+    return None
+
+
+def food_chain_rows(con, path, country, have_ids):
+    """Overture の飲食店から、チェーン店だけを取り出す（日本だけ）"""
+    xmin, ymin, xmax, ymax = COUNTRY_BBOX[country]
+    food = ' OR '.join(f"strpos(k, '{w}') > 0" for w in FOOD_WORDS)
+    tries = [
+        ("lower(concat_ws(',', basic_category, taxonomy.primary, array_to_string(taxonomy.hierarchy, ','), "
+         "array_to_string(taxonomy.alternates, ',')))", "map_extract(names.common, 'en')[1]",
+         "AND coalesce(operating_status, '') <> 'permanently_closed'"),
+        ("lower(concat_ws(',', basic_category, taxonomy.primary, array_to_string(taxonomy.hierarchy, ','), "
+         "array_to_string(taxonomy.alternates, ',')))", 'NULL', "AND coalesce(operating_status, '') <> 'permanently_closed'"),
+        ("lower(concat_ws(',', categories.primary, array_to_string(categories.alternate, ',')))", 'NULL', ''),
+    ]
+    raw, last = None, None
+    for k, en, closed in tries:
+        try:
+            t0 = time.time()
+            raw = con.execute(f"""
+            WITH src AS (
+              SELECT id, names.primary AS name, {en} AS name_en,
+                     addresses[1].country AS country, addresses[1].region AS region,
+                     addresses[1].locality AS locality, addresses[1].freeform AS freeform,
+                     (bbox.ymin + bbox.ymax) / 2 AS lat, (bbox.xmin + bbox.xmax) / 2 AS lng,
+                     sources[1].dataset AS src, {k} AS k
+              FROM read_parquet('{path}')
+              WHERE bbox.xmin >= {xmin} AND bbox.xmax <= {xmax} AND bbox.ymin >= {ymin} AND bbox.ymax <= {ymax}
+                AND coalesce(confidence, 1) >= {MIN_CONF} {closed}
+            )
+            SELECT id, name, name_en,
+                   CASE WHEN freeform IS NOT NULL AND locality IS NOT NULL AND strpos(freeform, locality) > 0 THEN freeform
+                        ELSE nullif(concat_ws(' ', region, locality, freeform), '') END AS addr,
+                   lat, lng, src
+            FROM src
+            WHERE (country = '{country}' OR (country IS NULL AND regexp_matches(name, '[ぁ-んァ-ヶ一-龯]')))
+              AND name IS NOT NULL AND name <> '' AND ({food})
+            """).fetchall()
+            log(f'{country}: 飲食店 {len(raw)} 件を読んだ（{time.time() - t0:.0f}秒）')
+            break
+        except duckdb.Error as e:
+            last = e
+            log('この形では読めない →', str(e).splitlines()[0][:200])
+    if raw is None:
+        raise RuntimeError(f'飲食店が読めない: {last}')
+    jp = re.compile(r'[ぁ-んァ-ヶ一-龯]')
+    picked = []
+    for id_, name, name_en, addr, lat, lng, src in raw:
+        if id_ in have_ids:
+            continue
+        c = chain_of(name)
+        if not c:
+            continue
+        cat, ja, en = c
+        picked.append((id_, country, cat, name, name_en, addr, lat, lng, src, 0.0, f'{ja} {en}', ja))
+    # 同じチェーンで50m以内なら1件に（日本語の名前の方を残す）
+    picked.sort(key=lambda r: (0 if jp.search(r[3]) else 1, len(r[3])))
+    grid, out, counts = {}, [], {}
+    for r in picked:
+        key = r[11]
+        cell = (key, round(r[6], 3), round(r[7], 3))
+        dup = False
+        for dla in (-0.001, 0, 0.001):
+            for dln in (-0.001, 0, 0.001):
+                for o in grid.get((key, round(r[6] + dla, 3), round(r[7] + dln, 3)), []):
+                    dy = (o[6] - r[6]) * 111000
+                    dx = (o[7] - r[7]) * 111000 * 0.8
+                    if dx * dx + dy * dy < 50 * 50:
+                        dup = True; break
+                if dup: break
+            if dup: break
+        if not dup:
+            grid.setdefault(cell, []).append(r)
+            out.append(r[:11])
+            counts[key] = counts.get(key, 0) + 1
+    return out, len(picked) - len(out), counts
+
+
+# ---------------------------------------------------------------------
 # 数えるだけ：飲食店（PLACES_MODE=count_food）
 # ---------------------------------------------------------------------
 FOOD_WORDS = ['eat_and_drink', 'restaurant', 'cafe', 'coffee', 'fast_food', 'bakery', 'izakaya', 'ramen',
@@ -856,6 +1087,14 @@ def main():
             rows, n02url = replace_jp_stations(rows)
             stats.append(f'JP stations: {"国土数値情報 " + n02url if n02url else "Overture（国土数値情報が使えなかった）"}')
             rows = add_jp_extras(rows, stats)
+            try:
+                food, dropped, ccount = food_chain_rows(con, path, country, {r[0] for r in rows})
+                rows = rows + food
+                stats.append(f'JP 飲食チェーン: {len(food)} 件（同じチェーンで50m以内の {dropped} 件はまとめた）')
+                stats.extend(f'  {n:>6}  {c}' for c, n in sorted(ccount.items(), key=lambda x: -x[1]))
+            except Exception as e:
+                log('飲食チェーンで失敗、足さずに続ける:', str(e)[:300])
+                stats.append(f'JP 飲食チェーン: 失敗 {str(e)[:120]}')
         rows = fix_cols(rows)
         counts = {}
         for r in rows:
