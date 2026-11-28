@@ -5827,7 +5827,7 @@ async function searchAddress(){
 // 施設テーブルで探す（Supabase の search_places）。戻り値：配列（失敗した時は null → Geoapify へ）
 // 施設の種類ごとの絵文字（検索結果の一覧に出す）
 const PLACE_CAT_EMOJI = { conveni:'🏪', fuel:'⛽', ev:'🔌', station:'🚉', rest:'🅿️', hotel:'🏨', onsen:'♨️', sight:'📸',
-  ic:'🛣️', hospital:'🏥', airport:'✈️', addr:'🏠' };   // v174：IC・病院・空港／v176：住所
+  ic:'🛣️', hospital:'🏥', airport:'✈️', addr:'🏠', cafe:'☕', food:'🍴' };   // v174：IC・病院・空港／v176：住所／v177：カフェ・飲食チェーン
 // 今見ている地図の半径（km）。近さの効き方をこれで変える（街を見ている時は近く、日本全体なら遠くも）
 function mapRadiusKm(){
   try{
